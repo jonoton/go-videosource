@@ -198,8 +198,8 @@ func (v *VideoReader) pubSourceStats() {
 	v.pubsubSource.Publish(pubsubmutex.Message{Topic: topicCurrentFrameStatsSource, Data: v.sourceStats.GetStats()})
 }
 
-// GetSourceStatsChan returns the subscriber
-func (v *VideoReader) GetSourceStatsChan() (result *pubsubmutex.Subscriber) {
+// GetSourceStatsSub returns the subscriber
+func (v *VideoReader) GetSourceStatsSub() (result *pubsubmutex.Subscriber) {
 	result = v.pubsubSource.Subscribe(topicCurrentFrameStatsSource, v.pubsubSource.GetUniqueSubscriberID(), 10)
 	return
 }
@@ -217,8 +217,8 @@ func (v *VideoReader) pubOutputStats() {
 	v.pubsubOutput.Publish(pubsubmutex.Message{Topic: topicCurrentFrameStatsOutput, Data: v.outputStats.GetStats()})
 }
 
-// GetOutputStatsChan returns the subscriber
-func (v *VideoReader) GetOutputStatsChan() (result *pubsubmutex.Subscriber) {
+// GetOutputStatsSub returns the subscriber
+func (v *VideoReader) GetOutputStatsSub() (result *pubsubmutex.Subscriber) {
 	result = v.pubsubOutput.Subscribe(topicCurrentFrameStatsOutput, v.pubsubOutput.GetUniqueSubscriberID(), 10)
 	return
 }
