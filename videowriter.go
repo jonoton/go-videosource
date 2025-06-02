@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cskr/pubsub"
 	pubsubmutex "github.com/jonoton/go-pubsubmutex"
 	"github.com/jonoton/go-sharedmat"
 	log "github.com/sirupsen/logrus"
@@ -81,7 +80,7 @@ type VideoWriter struct {
 	saveFull         bool
 	activityType     int
 	PortableWidth    int
-	pubsub           pubsubmutex.PubSubMutex
+	pubsub           pubsubmutex.PubSub
 }
 
 // NewVideoWriter creates a new VideoWriter
@@ -123,24 +122,23 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 		saveFull:         saveFull,
 		activityType:     activityType,
 		PortableWidth:    1080,
-		pubsub:           *pubsubmutex.New(0),
+		pubsub:           *pubsubmutex.NewPubSub(),
 	}
 	return v
 }
 
 // Start runs the processes
 func (v *VideoWriter) Start() {
-	v.pubsub.Start()
 	go func() {
 		statTick := time.NewTicker(time.Second)
-		getFrameStatsChan := v.pubsub.Sub(topicGetFrameStats)
+		getFrameStatsSub := v.pubsub.Subscribe(topicGetFrameStats, v.pubsub.GetUniqueSubscriberID(), 10)
 	Loop:
 		for {
 			select {
 			case <-statTick.C:
 				v.videoStats.Tick()
 				v.pubStats()
-			case _, ok := <-getFrameStatsChan:
+			case _, ok := <-getFrameStatsSub.Ch:
 				if !ok {
 					continue
 				}
@@ -218,9 +216,9 @@ func (v *VideoWriter) Start() {
 		statTick.Stop()
 		v.secTick.Stop()
 		v.videoStats.ClearPerSecond()
-		v.pubsub.Shutdown()
 		cleanupRingBuffer(&v.preRingBuffer)
 		close(v.done)
+		v.pubsub.Close()
 	}()
 }
 
@@ -373,7 +371,5 @@ func (v *VideoWriter) GetStats(timeoutMs int) (result *FrameStats) {
 	return
 }
 func (v *VideoWriter) pubStats() {
-	v.pubsub.Use(func(instance *pubsub.PubSub) {
-		instance.TryPub(v.videoStats.GetStats(), topicCurrentFrameStats)
-	})
+	v.pubsub.Publish(pubsubmutex.Message{Topic: topicCurrentFrameStats, Data: v.videoStats.GetStats()})
 }
