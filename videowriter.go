@@ -132,7 +132,7 @@ func (v *VideoWriter) Start() {
 	go func() {
 		statTick := time.NewTicker(time.Second)
 		getFrameStatsSub := v.pubsub.Subscribe(topicGetFrameStats, v.pubsub.GetUniqueSubscriberID(), 10)
-		defer v.pubsub.CleanupSub(getFrameStatsSub)
+		defer getFrameStatsSub.Unsubscribe()
 
 	Loop:
 		for {

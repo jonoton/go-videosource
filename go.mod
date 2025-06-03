@@ -3,7 +3,7 @@ module github.com/jonoton/go-videosource
 go 1.21
 
 require (
-	github.com/jonoton/go-pubsubmutex v1.2.0
+	github.com/jonoton/go-pubsubmutex v1.3.0
 	github.com/jonoton/go-sharedmat v1.0.0
 	github.com/sirupsen/logrus v1.9.3
 	gocv.io/x/gocv v0.37.0

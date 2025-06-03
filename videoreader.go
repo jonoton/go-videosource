@@ -66,7 +66,7 @@ func (v *VideoReader) Start() <-chan Image {
 		outTick := time.NewTicker(v.getTickMs(fps) * time.Millisecond)
 		statTick := time.NewTicker(time.Second)
 		getFrameStatsSub := v.pubsubOutput.Subscribe(topicGetFrameStatsOutput, v.pubsubOutput.GetUniqueSubscriberID(), 10)
-		defer v.pubsubOutput.CleanupSub(getFrameStatsSub)
+		defer getFrameStatsSub.Unsubscribe()
 	Loop:
 		for {
 			select {
@@ -144,7 +144,7 @@ func (v *VideoReader) sourceImages() <-chan Image {
 		tick := time.NewTicker(v.getTickMs(fps) * time.Millisecond)
 		statTick := time.NewTicker(time.Second)
 		getFrameStatsSub := v.pubsubSource.Subscribe(topicGetFrameStatsSource, v.pubsubSource.GetUniqueSubscriberID(), 10)
-		defer v.pubsubSource.CleanupSub(getFrameStatsSub)
+		defer getFrameStatsSub.Unsubscribe()
 	Loop:
 		for {
 			select {
