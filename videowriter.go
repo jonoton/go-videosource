@@ -164,25 +164,20 @@ func (v *VideoWriter) Start() {
 					// open
 					firstItem, ok := v.preRingBuffer.TryGet()
 					if ok && firstItem.Image.IsFilled() {
-						firstFrame := firstItem.Image
-						allItems := v.preRingBuffer.GetAll()
-						popped := make([]Image, len(allItems))
-						for i, item := range allItems {
-							popped[i] = item.Image
+						firstImg := firstItem.Image
+						preFrames := v.preRingBuffer.GetAll()
+						preview := firstImg
+						if len(preFrames) > 0 {
+							// set preview to most recent image when triggered
+							preview = preFrames[len(preFrames)-1].Image
 						}
-						preFrames := *NewImageList()
-						preFrames.Set(popped)
-						preview := firstFrame
-						if len(popped) > 0 {
-							preview = popped[0]
-						}
-						v.openRecord(firstFrame, preview)
-						v.writeRecord(firstFrame)
-						firstFrame.Cleanup()
-						for preFrames.Len() > 0 {
-							cur := preFrames.Pop()
-							v.writeRecord(cur)
-							cur.Cleanup()
+						v.openRecord(firstImg, preview)
+						v.writeRecord(firstImg)
+						firstImg.Cleanup()
+						for _, item := range preFrames {
+							curImg := item.Image
+							v.writeRecord(curImg)
+							curImg.Cleanup()
 						}
 					}
 				} else if !v.record && v.recording {
