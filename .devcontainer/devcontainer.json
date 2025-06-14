@@ -12,5 +12,8 @@
                 "golang.go"
             ]
         }
-    }
+    },
+    "mounts": [
+        "source=N:/server-testing/dev/Videos,target=/Videos,type=bind,consistency=cached"
+    ]
 }

@@ -2,7 +2,6 @@ package videosource
 
 import (
 	"image"
-	"time"
 
 	"gocv.io/x/gocv"
 )
@@ -328,70 +327,3 @@ func (b ProcessedImageByFacePercent) Less(i, j int) bool {
 	return getHighestFacePercentage(b[i].Faces) > getHighestFacePercentage(b[j].Faces)
 }
 func (b ProcessedImageByFacePercent) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
-
-// ProcessedImageFpsChan will notify caller via ProcessedImage channel at given fps
-type ProcessedImageFpsChan struct {
-	outFps     int
-	streamChan chan ProcessedImage
-	done       chan bool
-}
-
-// NewProcessedImageFpsChan creates a new ProcessedImageFpsChan
-func NewProcessedImageFpsChan(outFps int) *ProcessedImageFpsChan {
-	p := &ProcessedImageFpsChan{
-		outFps:     outFps,
-		streamChan: make(chan ProcessedImage),
-		done:       make(chan bool),
-	}
-	return p
-}
-
-// Start runs the channel
-func (p *ProcessedImageFpsChan) Start() chan ProcessedImage {
-	outChan := make(chan ProcessedImage)
-	go func() {
-		var curImage *ProcessedImage
-		writeTick := time.NewTicker(time.Duration(1000/p.outFps) * time.Millisecond)
-	Loop:
-		for {
-			select {
-			case img, ok := <-p.streamChan:
-				if !ok {
-					img.Cleanup()
-					break Loop
-				}
-				if curImage != nil {
-					curImage.Cleanup()
-				}
-				curImage = &img
-			case <-writeTick.C:
-				if curImage != nil {
-					outChan <- *curImage
-					curImage = nil
-				}
-			}
-		}
-		writeTick.Stop()
-		if curImage != nil {
-			curImage.Cleanup()
-		}
-		close(outChan)
-		close(p.done)
-	}()
-	return outChan
-}
-
-// Send ProcessedImage to channel
-func (p *ProcessedImageFpsChan) Send(img ProcessedImage) {
-	p.streamChan <- img
-}
-
-// Close notified by caller that input stream is done/closed
-func (p *ProcessedImageFpsChan) Close() {
-	close(p.streamChan)
-}
-
-// Wait until done
-func (p *ProcessedImageFpsChan) Wait() {
-	<-p.done
-}

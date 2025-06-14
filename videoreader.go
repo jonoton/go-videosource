@@ -1,26 +1,22 @@
 package videosource
 
 import (
+	"sync"
 	"time"
 
+	chanLimiter "github.com/jonoton/go-chanlimiter"
 	pubsubmutex "github.com/jonoton/go-pubsubmutex"
 	log "github.com/sirupsen/logrus"
 )
 
-const topicGetFrameStatsSource = "topic-get-frame-stats-source"
-const topicCurrentFrameStatsSource = "topic-current-frame-stats-source"
-const topicGetFrameStatsOutput = "topic-get-frame-stats-output"
-const topicCurrentFrameStatsOutput = "topic-current-frame-stats-output"
-
 // VideoReader reads a VideoSource
 type VideoReader struct {
 	videoSource  VideoSource
-	pubsubSource pubsubmutex.PubSub
-	pubsubOutput pubsubmutex.PubSub
 	sourceStats  VideoStats
 	outputStats  VideoStats
 	done         chan bool
 	cancel       chan bool
+	cancelOnce   sync.Once
 	MaxSourceFps int
 	MaxOutputFps int
 	Quality      int
@@ -33,8 +29,6 @@ func NewVideoReader(videoSource VideoSource, maxSourceFps int, maxOutputFps int)
 	}
 	v := &VideoReader{
 		videoSource:  videoSource,
-		pubsubSource: *pubsubmutex.NewPubSub(),
-		pubsubOutput: *pubsubmutex.NewPubSub(),
 		sourceStats:  *NewVideoStats(),
 		outputStats:  *NewVideoStats(),
 		done:         make(chan bool),
@@ -53,80 +47,14 @@ func (v *VideoReader) SetQuality(percent int) {
 	}
 }
 
-// Start runs the processes
-func (v *VideoReader) Start() <-chan Image {
-	images := make(chan Image)
-	go func() {
-		if !v.videoSource.Initialize() {
-			log.Warnln("VideoReader could not initialize", v.videoSource.GetName())
-		}
-		videoImgs := v.sourceImages()
-		var bufImage *Image
-		fps := v.MaxOutputFps
-		outTick := time.NewTicker(v.getTickMs(fps) * time.Millisecond)
-		statTick := time.NewTicker(time.Second)
-		getFrameStatsSub := v.pubsubOutput.Subscribe(topicGetFrameStatsOutput, v.pubsubOutput.GetUniqueSubscriberID(), 10)
-		defer getFrameStatsSub.Unsubscribe()
-	Loop:
-		for {
-			select {
-			case img, ok := <-videoImgs:
-				if !ok {
-					img.Cleanup()
-					break Loop
-				}
-				if bufImage != nil {
-					if filled, closed := bufImage.Cleanup(); filled && closed {
-						v.outputStats.AddDropped()
-					}
-				}
-				bufImage = &img
-			case <-outTick.C:
-				if bufImage != nil && bufImage.IsFilled() {
-					images <- *bufImage.Ref()
-					bufImage.Cleanup()
-					bufImage = nil
-					v.outputStats.AddAccepted()
-				}
-				if fps != v.MaxOutputFps {
-					fps = v.MaxOutputFps
-					outTick.Stop()
-					outTick = time.NewTicker(v.getTickMs(fps) * time.Millisecond)
-				}
-			case <-statTick.C:
-				v.outputStats.Tick()
-				v.pubOutputStats()
-			case _, ok := <-getFrameStatsSub.Ch:
-				if !ok {
-					continue
-				}
-				v.pubOutputStats()
-			}
-		}
-		if bufImage != nil {
-			bufImage.Cleanup()
-		}
-		outTick.Stop()
-		statTick.Stop()
-		v.videoSource.Cleanup()
-		v.outputStats.ClearPerSecond()
-		close(images)
-		close(v.done)
-		v.pubsubSource.Close()
-		v.pubsubOutput.Close()
-	}()
-
-	return images
+type statsImage struct {
+	Image      Image
+	VideoStats *VideoStats
 }
 
-// Stop will stop the processes
-func (v *VideoReader) Stop() {
-	close(v.cancel)
-}
-
-// Wait for done
-func (v *VideoReader) Wait() {
-	<-v.done
+func (s *statsImage) Cleanup() {
+	s.Image.Cleanup()
+	s.VideoStats.AddDropped()
 }
 
 func (v *VideoReader) getTickMs(fps int) time.Duration {
@@ -137,90 +65,115 @@ func (v *VideoReader) getTickMs(fps int) time.Duration {
 	return time.Duration(tickMs)
 }
 
-func (v *VideoReader) sourceImages() <-chan Image {
-	videoImgs := make(chan Image)
+// Start runs the processes
+func (v *VideoReader) Start() <-chan Image {
+	images := make(chan Image)
 	go func() {
-		fps := v.MaxSourceFps
-		tick := time.NewTicker(v.getTickMs(fps) * time.Millisecond)
-		statTick := time.NewTicker(time.Second)
-		getFrameStatsSub := v.pubsubSource.Subscribe(topicGetFrameStatsSource, v.pubsubSource.GetUniqueSubscriberID(), 10)
-		defer getFrameStatsSub.Unsubscribe()
-	Loop:
-		for {
-			select {
-			case <-tick.C:
-				done, image := v.videoSource.ReadImage()
-				if done {
-					image.Cleanup()
-					log.Infoln("Done source", v.videoSource.GetName())
-					break Loop
-				} else if image.IsFilled() {
-					if v.Quality > 0 && v.Quality < 100 {
-						image.ChangeQuality(v.Quality)
+		if !v.videoSource.Initialize() {
+			log.Warnln("VideoReader could not initialize", v.videoSource.GetName())
+		}
+		inFps := v.MaxSourceFps
+		inputLimiter := chanLimiter.New[*statsImage](inFps)
+
+		outFps := v.MaxOutputFps
+		outputLimiter := chanLimiter.New[*statsImage](outFps)
+
+		go func() {
+			defer outputLimiter.Stop()
+			for statsImg := range inputLimiter.Output() {
+				v.sourceStats.AddAccepted()
+				outputLimiter.Send(&statsImage{Image: statsImg.Image, VideoStats: &v.outputStats})
+			}
+		}()
+
+		go func() {
+			defer inputLimiter.Stop()
+			v.sourceStats.Start()
+			tick := time.NewTicker(v.getTickMs(inFps) * time.Millisecond)
+			defer tick.Stop()
+		SourceLoop:
+			for {
+				select {
+				case <-tick.C:
+					done, image := v.videoSource.ReadImage()
+					if done {
+						image.Cleanup()
+						log.Infoln("Done source", v.videoSource.GetName())
+						break SourceLoop
+					} else if image.IsFilled() {
+						if v.Quality > 0 && v.Quality < 100 {
+							image.ChangeQuality(v.Quality)
+						}
+						inputLimiter.Send(&statsImage{Image: image, VideoStats: &v.sourceStats})
 					}
-					videoImgs <- *image.Ref()
-					v.sourceStats.AddAccepted()
+				case <-v.cancel:
+					break SourceLoop
 				}
-				if fps != v.MaxSourceFps {
-					fps = v.MaxSourceFps
-					tick.Stop()
-					tick = time.NewTicker(v.getTickMs(fps) * time.Millisecond)
-				}
-				image.Cleanup()
-			case <-statTick.C:
-				v.sourceStats.Tick()
-				v.pubSourceStats()
-			case _, ok := <-getFrameStatsSub.Ch:
-				if !ok {
-					continue
-				}
-				v.pubSourceStats()
-			case <-v.cancel:
-				break Loop
+			}
+		}()
+
+		v.outputStats.Start()
+		for statsImg := range outputLimiter.Output() {
+			if statsImg.Image.IsFilled() {
+				images <- statsImg.Image
+				v.outputStats.AddAccepted()
 			}
 		}
-		tick.Stop()
-		statTick.Stop()
-		v.sourceStats.ClearPerSecond()
-		close(videoImgs)
+
+		v.videoSource.Cleanup()
+		v.outputStats.Close()
+		v.sourceStats.Close()
+		close(images)
+		close(v.done)
 	}()
-	return videoImgs
+
+	return images
 }
 
-// GetStatsSource returns the FrameStats
-func (v *VideoReader) GetStatsSource(timeoutMs int) (result *FrameStats) {
-	r := v.pubsubSource.SendReceive(topicGetFrameStatsSource, topicCurrentFrameStatsSource,
-		nil, timeoutMs)
-	if r != nil {
-		result = r.(*FrameStats)
-	}
+// Stop will stop the processes
+func (v *VideoReader) Stop() {
+	v.cancelOnce.Do(func() {
+		close(v.cancel)
+	})
+}
+
+// Wait for done
+func (v *VideoReader) Wait() {
+	<-v.done
+}
+
+// GetFrameStatsSource returns the FrameStats directly
+func (v *VideoReader) GetFrameStatsSource() (result *FrameStats) {
+	result = v.sourceStats.GetFrameStats()
 	return
 }
-func (v *VideoReader) pubSourceStats() {
-	v.pubsubSource.Publish(pubsubmutex.Message{Topic: topicCurrentFrameStatsSource, Data: v.sourceStats.GetStats()})
+
+// GetStatsSource returns the FrameStats using pubsub
+func (v *VideoReader) GetStatsSource(timeoutMs int) (result *FrameStats) {
+	result = v.sourceStats.GetStats(timeoutMs)
+	return
 }
 
 // GetSourceStatsSub returns the subscriber
 func (v *VideoReader) GetSourceStatsSub() (result *pubsubmutex.Subscriber) {
-	result = v.pubsubSource.Subscribe(topicCurrentFrameStatsSource, v.pubsubSource.GetUniqueSubscriberID(), 10)
+	result = v.sourceStats.GetStatsSub()
 	return
 }
 
-// GetStatsOutput returns the FrameStats
-func (v *VideoReader) GetStatsOutput(timeoutMs int) (result *FrameStats) {
-	r := v.pubsubOutput.SendReceive(topicGetFrameStatsOutput, topicCurrentFrameStatsOutput,
-		nil, timeoutMs)
-	if r != nil {
-		result = r.(*FrameStats)
-	}
+// GetFrameStatsOutput returns the FrameStats directly
+func (v *VideoReader) GetFrameStatsOutput() (result *FrameStats) {
+	result = v.outputStats.GetFrameStats()
 	return
 }
-func (v *VideoReader) pubOutputStats() {
-	v.pubsubOutput.Publish(pubsubmutex.Message{Topic: topicCurrentFrameStatsOutput, Data: v.outputStats.GetStats()})
+
+// GetStatsOutput returns the FrameStats using pubsub
+func (v *VideoReader) GetStatsOutput(timeoutMs int) (result *FrameStats) {
+	result = v.outputStats.GetStats(timeoutMs)
+	return
 }
 
 // GetOutputStatsSub returns the subscriber
 func (v *VideoReader) GetOutputStatsSub() (result *pubsubmutex.Subscriber) {
-	result = v.pubsubOutput.Subscribe(topicCurrentFrameStatsOutput, v.pubsubOutput.GetUniqueSubscriberID(), 10)
+	result = v.outputStats.GetStatsSub()
 	return
 }
