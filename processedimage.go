@@ -21,9 +21,13 @@ func NewMotionInfo(rect image.Rectangle, colorThickness ColorThickness) *MotionI
 	return m
 }
 
-// Ref will reference the MotionInfo and underlying SharedMat
+// Ref will create a copy and reference the underlying SharedMat
 func (m *MotionInfo) Ref() *MotionInfo {
-	return m
+	c := &MotionInfo{
+		Rect:          m.Rect,
+		HighlightInfo: m.HighlightInfo,
+	}
+	return c
 }
 
 // Clone will clone the MotionInfo
@@ -60,9 +64,15 @@ func NewObjectInfo(rect image.Rectangle, colorThickness ColorThickness) *ObjectI
 	return o
 }
 
-// Ref will reference the ObjectInfo and underlying SharedMat
+// Ref will create a copy and reference the underlying SharedMat
 func (o *ObjectInfo) Ref() *ObjectInfo {
-	return o
+	c := &ObjectInfo{
+		Rect:          o.Rect,
+		Description:   o.Description,
+		Percentage:    o.Percentage,
+		HighlightInfo: o.HighlightInfo,
+	}
+	return c
 }
 
 // Clone will clone the ObjectInfo
@@ -110,9 +120,14 @@ func NewFaceInfo(rect image.Rectangle, colorThickness ColorThickness) *FaceInfo 
 	return f
 }
 
-// Ref will reference the FaceInfo and underlying SharedMat
+// Ref will create a copy and reference the underlying SharedMat
 func (f *FaceInfo) Ref() *FaceInfo {
-	return f
+	c := &FaceInfo{
+		Rect:          f.Rect,
+		Percentage:    f.Percentage,
+		HighlightInfo: f.HighlightInfo,
+	}
+	return c
 }
 
 // Clone will clone the FaceInfo
@@ -231,19 +246,24 @@ func (p ProcessedImage) Face(index int) *Image {
 	return &Image{}
 }
 
-// Ref will reference the ProcessedImage and underlying SharedMats
+// Ref will create a copy and reference the underlying SharedMat
 func (p *ProcessedImage) Ref() *ProcessedImage {
-	p.Original.Ref()
+	c := &ProcessedImage{
+		Original: *p.Original.Ref(),
+		Motions:  make([]MotionInfo, 0),
+		Objects:  make([]ObjectInfo, 0),
+		Faces:    make([]FaceInfo, 0),
+	}
 	for _, cur := range p.Motions {
-		cur.Ref()
+		c.Motions = append(c.Motions, *cur.Ref())
 	}
 	for _, cur := range p.Objects {
-		cur.Ref()
+		c.Objects = append(c.Objects, *cur.Ref())
 	}
 	for _, cur := range p.Faces {
-		cur.Ref()
+		c.Faces = append(c.Faces, *cur.Ref())
 	}
-	return p
+	return c
 }
 
 // Clone will clone the ProcessedImage

@@ -62,7 +62,7 @@ func (i *Image) Width() int {
 	return result
 }
 
-// Ref will reference the Image and underlying SharedMat
+// Ref will create a copy and reference the underlying SharedMat
 func (i *Image) Ref() *Image {
 	copy := &Image{
 		CreatedTime: i.CreatedTime,
