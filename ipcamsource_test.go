@@ -1,3 +1,4 @@
+//go:build config
 // +build config
 
 package videosource

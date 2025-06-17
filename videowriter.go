@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	pubsubmutex "github.com/jonoton/go-pubsubmutex"
@@ -13,6 +14,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gocv.io/x/gocv"
 )
+
+const topicWriterImages = "topic-writer-images"
 
 // SaveImage will save an Image
 func SaveImage(img Image, t time.Time, saveDirectory string, jpegQuality int, name string, title string, percentage string) (savePath string) {
@@ -63,7 +66,8 @@ type VideoWriter struct {
 	fileType         string
 	maxSec           int
 	outFps           int
-	streamChan       chan ProcessedImage
+	bufferSeconds    int
+	pubsub           pubsubmutex.PubSub
 	preRingBuffer    ringbuffer.RingBuffer[*statsImage]
 	writerFull       *gocv.VideoWriter
 	writerPortable   *gocv.VideoWriter
@@ -72,6 +76,8 @@ type VideoWriter struct {
 	secTick          *time.Ticker
 	recordChan       chan bool
 	done             chan bool
+	cancel           chan bool
+	cancelOnce       sync.Once
 	videoStats       *VideoStats
 	savePreview      bool
 	savePortable     bool
@@ -86,14 +92,13 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 	if saveDirectory == "" || codec == "" || fileType == "" || timeoutSec <= 0 || maxSec <= 0 || outFps <= 0 {
 		return nil
 	}
-	bufferSize := bufferSeconds * outFps
-	if bufferSize < 0 {
-		bufferSize = 0
-	}
+
 	preRingBufferSize := maxPreSec * outFps
-	if preRingBufferSize <= 0 {
-		preRingBufferSize = 1
+	if preRingBufferSize < 0 {
+		preRingBufferSize = 0
 	}
+	preRingBufferSize++ // add one to buffer image that triggers write start
+
 	v := &VideoWriter{
 		record:           false,
 		recording:        false,
@@ -104,7 +109,8 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 		fileType:         fileType,
 		maxSec:           maxSec,
 		outFps:           outFps,
-		streamChan:       make(chan ProcessedImage, bufferSize),
+		bufferSeconds:    bufferSeconds,
+		pubsub:           *pubsubmutex.NewPubSub(),
 		preRingBuffer:    *ringbuffer.New[*statsImage](preRingBufferSize),
 		writerFull:       nil,
 		writerPortable:   nil,
@@ -113,6 +119,7 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 		secTick:          time.NewTicker(time.Second),
 		recordChan:       make(chan bool),
 		done:             make(chan bool),
+		cancel:           make(chan bool),
 		videoStats:       NewVideoStats(),
 		savePreview:      savePreview,
 		savePortable:     savePortable,
@@ -123,43 +130,76 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 	return v
 }
 
+func (v *VideoWriter) getTickMs(fps int) time.Duration {
+	tickMs := 5
+	if fps > 0 {
+		tickMs = 1000 / fps
+	}
+	return time.Duration(tickMs)
+}
+
+func (v *VideoWriter) checkLastActivityTime(img *ProcessedImage) {
+	if v.record &&
+		((v.activityType == ActivityImage && img.Original.IsFilled()) ||
+			(v.activityType == ActivityMotion && img.HasMotion()) ||
+			(v.activityType == ActivityObject && img.HasObject()) ||
+			(v.activityType == ActivityFace && img.HasFace())) {
+		v.lastActivityTime = time.Now()
+	}
+}
+
 // Start runs the processes
 func (v *VideoWriter) Start() {
 	go func() {
 		v.videoStats.Start()
+
+		writerTick := time.NewTicker(v.getTickMs(v.outFps) * time.Millisecond)
+
+		bufferSize := v.bufferSeconds * v.outFps
+		if bufferSize < 0 {
+			bufferSize = 0
+		}
+		imageSub := v.pubsub.Subscribe(topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
+		var bufImg *Image
+
 	Loop:
 		for {
 			select {
 			case <-v.recordChan:
 				v.record = true
 				v.lastActivityTime = time.Now()
-			case img, ok := <-v.streamChan:
+			case msg, ok := <-imageSub.Ch:
+				processedImage := msg.Data.(*ProcessedImage)
 				if !ok {
-					if v.recording {
-						// close
-						v.closeRecord()
+					if processedImage != nil {
+						processedImage.Cleanup()
 					}
-					img.Cleanup()
 					break Loop
 				}
-				if v.record &&
-					((v.activityType == ActivityImage && img.Original.IsFilled()) ||
-						(v.activityType == ActivityMotion && img.HasMotion()) ||
-						(v.activityType == ActivityObject && img.HasObject()) ||
-						(v.activityType == ActivityFace && img.HasFace())) {
-					v.lastActivityTime = time.Now()
+				if processedImage == nil {
+					continue
 				}
-				origImg := *img.Original.Ref()
-				if origImg.IsFilled() {
+				v.checkLastActivityTime(processedImage)
+
+				// buffer for writing
+				origImg := processedImage.Original.Ref()
+				processedImage.Cleanup()
+
+				// current buffer image
+				if bufImg != nil {
+					bufImg.Cleanup()
+				}
+				bufImg = origImg
+			case <-writerTick.C:
+				if bufImg != nil && bufImg.IsFilled() {
 					if v.recording {
 						// write
-						v.writeRecord(origImg)
+						v.writeRecord(*bufImg)
 					} else {
-						// buffer
-						v.preRingBuffer.Add(&statsImage{Image: *origImg.Ref(), VideoStats: v.videoStats})
+						// pre buffer
+						v.preRingBuffer.Add(&statsImage{Image: *bufImg.Ref(), VideoStats: v.videoStats})
 					}
 				}
-				origImg.Cleanup()
 				if v.record && !v.recording {
 					// open
 					firstItem, ok := v.preRingBuffer.TryGet()
@@ -184,7 +224,6 @@ func (v *VideoWriter) Start() {
 					// close
 					v.closeRecord()
 				}
-				img.Cleanup()
 			case <-v.secTick.C:
 				if v.isRecordExpired() {
 					v.closeRecord()
@@ -194,12 +233,26 @@ func (v *VideoWriter) Start() {
 					v.lastActivityTime = time.Time{}
 					v.closeRecord()
 				}
+			case <-v.cancel:
+				break Loop
 			}
 		}
+
+		// cleanup recording
+		if v.recording {
+			v.closeRecord()
+		}
+		if bufImg != nil {
+			bufImg.Cleanup()
+		}
+
+		writerTick.Stop()
+		imageSub.Unsubscribe()
 		v.secTick.Stop()
 		v.preRingBuffer.Stop()
 		v.videoStats.Close()
 		close(v.done)
+		v.pubsub.Close()
 	}()
 }
 
@@ -210,12 +263,14 @@ func (v *VideoWriter) Trigger() {
 
 // Send Image to write
 func (v *VideoWriter) Send(img ProcessedImage) {
-	v.streamChan <- img
+	v.pubsub.Publish(pubsubmutex.Message{Topic: topicWriterImages, Data: &img})
 }
 
 // Close notified by caller that input stream is done/closed
 func (v *VideoWriter) Close() {
-	close(v.streamChan)
+	v.cancelOnce.Do(func() {
+		close(v.cancel)
+	})
 }
 
 // Wait until done

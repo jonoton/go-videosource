@@ -17,16 +17,21 @@ import (
 func TestVideoWriter(t *testing.T) {
 	inFps := 8
 	outFps := 30
-	waitSecondsBeforeWrite := 14
-	startWriteFrameCount := inFps * waitSecondsBeforeWrite
+	startWriteFrameCount := inFps * 10
+	shutdownFrameCount := inFps * 20
+
+	writerBufferSec := 1
+	writerMaxPreSec := 3
+	writerTimeoutSec := 10
+	writerMaxSec := 30
+	writerOutFps := 8
 
 	reader := NewVideoReader(NewFileSource("cam5", "/Videos/cam5.mp4"), inFps, outFps)
 	images := reader.Start()
-	defer reader.Stop()
 
 	saveDir := filepath.Clean("/Videos/videowriter-test") + string(filepath.Separator)
 	os.MkdirAll(saveDir, os.ModePerm)
-	writer := NewVideoWriter("cam5", saveDir, "mp4v", "mp4", 0, 4, 2, 30, 8, true, true, false, ActivityImage)
+	writer := NewVideoWriter("cam5", saveDir, "mp4v", "mp4", writerBufferSec, writerMaxPreSec, writerTimeoutSec, writerMaxSec, writerOutFps, true, true, false, ActivityImage)
 	writer.Start()
 
 	wg := sync.WaitGroup{}
@@ -71,7 +76,13 @@ func TestVideoWriter(t *testing.T) {
 			writer.Trigger()
 		}
 		fmt.Println("SharedMat Profile Count:", sharedmat.SharedMatProfile.Count())
+
+		if frameCount >= shutdownFrameCount {
+			reader.Stop()
+			break
+		}
 	}
+	reader.Stop()
 	reader.Wait()
 	window.WaitKey(500)
 
