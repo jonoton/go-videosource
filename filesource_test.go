@@ -13,7 +13,7 @@ import (
 )
 
 func TestFileSource(t *testing.T) {
-	f := NewVideoReader(NewFileSource("cam5", "/Videos/cam5.mp4"), 30, 8)
+	f := NewVideoReader(NewFileSource("cam5", "/Videos/cam5.mp4"), 8, 6)
 	images := f.Start()
 	defer f.Stop()
 

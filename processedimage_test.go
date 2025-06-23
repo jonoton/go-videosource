@@ -20,13 +20,13 @@ func TestProcessedImageContentSort(t *testing.T) {
 	face2.Percentage = 90
 
 	now := time.Now()
-	first := NewProcessedImage(Image{CreatedTime: now.Add(time.Hour)})
+	first := NewProcessedImage(Image{createdTime: now.Add(time.Hour)})
 	first.Objects = append(first.Objects, *obj1)
 	first.Objects = append(first.Objects, *obj1)
 	first.Faces = append(first.Faces, *face1)
 	first.Faces = append(first.Faces, *face1)
 
-	second := NewProcessedImage(Image{CreatedTime: now})
+	second := NewProcessedImage(Image{createdTime: now})
 	second.Objects = append(second.Objects, *obj2)
 	second.Faces = append(second.Faces, *face2)
 
@@ -35,7 +35,7 @@ func TestProcessedImageContentSort(t *testing.T) {
 	list = append(list, *second)
 
 	for i, cur := range list {
-		fmt.Printf("%d - %v\n", i, cur.Original.CreatedTime)
+		fmt.Printf("%d - %v\n", i, cur.Original.createdTime)
 		fmt.Printf("\tObjects: %d\n", len(cur.Objects))
 		for j, obj := range cur.Objects {
 			fmt.Printf("\t\t%d - Percent %d\n", j, obj.Percentage)
@@ -51,7 +51,7 @@ func TestProcessedImageContentSort(t *testing.T) {
 	sort.Sort(ProcessedImageByFacePercent(list))
 	fmt.Println("Sorted")
 	for i, cur := range list {
-		fmt.Printf("%d - %v\n", i, cur.Original.CreatedTime)
+		fmt.Printf("%d - %v\n", i, cur.Original.createdTime)
 		fmt.Printf("\tObjects: %d\n", len(cur.Objects))
 		for j, obj := range cur.Objects {
 			fmt.Printf("\t\t%d - Percent %d\n", j, obj.Percentage)

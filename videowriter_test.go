@@ -18,7 +18,8 @@ func TestVideoWriter(t *testing.T) {
 	inFps := 8
 	outFps := 30
 	startWriteFrameCount := inFps * 10
-	shutdownFrameCount := inFps * 20
+	stopWriteFrameCount := inFps * 20
+	shutdownFrameCount := inFps * 30
 
 	writerBufferSec := 1
 	writerMaxPreSec := 3
@@ -76,6 +77,10 @@ func TestVideoWriter(t *testing.T) {
 			writer.Trigger()
 		}
 		fmt.Println("SharedMat Profile Count:", sharedmat.SharedMatProfile.Count())
+
+		if frameCount >= stopWriteFrameCount {
+			writer.Close()
+		}
 
 		if frameCount >= shutdownFrameCount {
 			reader.Stop()

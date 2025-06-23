@@ -9,8 +9,8 @@ import (
 	"time"
 
 	pubsubmutex "github.com/jonoton/go-pubsubmutex"
-	ringbuffer "github.com/jonoton/go-ringbuffer"
 	"github.com/jonoton/go-sharedmat"
+	temporalbuffer "github.com/jonoton/go-temporalbuffer"
 	log "github.com/sirupsen/logrus"
 	"gocv.io/x/gocv"
 )
@@ -68,7 +68,8 @@ type VideoWriter struct {
 	outFps           int
 	bufferSeconds    int
 	pubsub           pubsubmutex.PubSub
-	preRingBuffer    ringbuffer.RingBuffer[*statsImage]
+	preWriteBuffer   temporalbuffer.Buffer[*StatsImage]
+	writeBuffer      temporalbuffer.Buffer[*StatsImage]
 	writerFull       *gocv.VideoWriter
 	writerPortable   *gocv.VideoWriter
 	activitySec      int
@@ -93,25 +94,30 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 		return nil
 	}
 
-	preRingBufferSize := maxPreSec * outFps
-	if preRingBufferSize < 0 {
-		preRingBufferSize = 0
+	preWriteBufferSize := maxPreSec * outFps
+	if preWriteBufferSize < 0 {
+		preWriteBufferSize = 0
 	}
-	preRingBufferSize++ // add one to buffer image that triggers write start
+	preWriteBufferSize++ // add one to buffer image that triggers write start
 
 	v := &VideoWriter{
-		record:           false,
-		recording:        false,
-		startTime:        time.Time{},
-		name:             name,
-		saveDirectory:    saveDirectory,
-		codec:            codec, // xvid, mp4v, hev1, hvc1, avc1, avc3
-		fileType:         fileType,
-		maxSec:           maxSec,
-		outFps:           outFps,
-		bufferSeconds:    bufferSeconds,
-		pubsub:           *pubsubmutex.NewPubSub(),
-		preRingBuffer:    *ringbuffer.New[*statsImage](preRingBufferSize),
+		record:        false,
+		recording:     false,
+		startTime:     time.Time{},
+		name:          name,
+		saveDirectory: saveDirectory,
+		codec:         codec, // xvid, mp4v, hev1, hvc1, avc1, avc3
+		fileType:      fileType,
+		maxSec:        maxSec,
+		outFps:        outFps,
+		bufferSeconds: bufferSeconds,
+		pubsub:        *pubsubmutex.NewPubSub(),
+		preWriteBuffer: *temporalbuffer.New[*StatsImage](preWriteBufferSize,
+			temporalbuffer.WithFillStrategy(temporalbuffer.NoFill),
+			temporalbuffer.WithDropStrategy(temporalbuffer.DropOldest)),
+		writeBuffer: *temporalbuffer.New[*StatsImage](outFps,
+			temporalbuffer.WithFillStrategy(temporalbuffer.PadWithNewest),
+			temporalbuffer.WithDropStrategy(temporalbuffer.DropOldest)),
 		writerFull:       nil,
 		writerPortable:   nil,
 		activitySec:      timeoutSec,
@@ -130,14 +136,6 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 	return v
 }
 
-func (v *VideoWriter) getTickMs(fps int) time.Duration {
-	tickMs := 5
-	if fps > 0 {
-		tickMs = 1000 / fps
-	}
-	return time.Duration(tickMs)
-}
-
 func (v *VideoWriter) checkLastActivityTime(img *ProcessedImage) {
 	if v.record &&
 		((v.activityType == ActivityImage && img.Original.IsFilled()) ||
@@ -150,31 +148,30 @@ func (v *VideoWriter) checkLastActivityTime(img *ProcessedImage) {
 
 // Start runs the processes
 func (v *VideoWriter) Start() {
+	v.videoStats.Start()
+
+	wg := sync.WaitGroup{}
+
+	// input
+	wg.Add(1)
 	go func() {
-		v.videoStats.Start()
-
-		writerTick := time.NewTicker(v.getTickMs(v.outFps) * time.Millisecond)
-
+		defer wg.Done()
 		bufferSize := v.bufferSeconds * v.outFps
 		if bufferSize < 0 {
 			bufferSize = 0
 		}
 		imageSub := v.pubsub.Subscribe(topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
-		var bufImg *Image
-
-	Loop:
+		defer imageSub.Unsubscribe()
+	ReadLoop:
 		for {
 			select {
-			case <-v.recordChan:
-				v.record = true
-				v.lastActivityTime = time.Now()
 			case msg, ok := <-imageSub.Ch:
 				processedImage := msg.Data.(*ProcessedImage)
 				if !ok {
 					if processedImage != nil {
 						processedImage.Cleanup()
 					}
-					break Loop
+					break ReadLoop
 				}
 				if processedImage == nil {
 					continue
@@ -182,49 +179,47 @@ func (v *VideoWriter) Start() {
 				v.checkLastActivityTime(processedImage)
 
 				// buffer for writing
-				origImg := processedImage.Original.Ref()
-				processedImage.Cleanup()
-
-				// current buffer image
-				if bufImg != nil {
-					bufImg.Cleanup()
-				}
-				bufImg = origImg
-			case <-writerTick.C:
-				if bufImg != nil && bufImg.IsFilled() {
+				img := processedImage.Original
+				if img.IsFilled() {
 					if v.recording {
-						// write
-						v.writeRecord(*bufImg)
+						// write buffer
+						v.writeBuffer.Add(&StatsImage{Image: *img.Ref(), VideoStats: v.videoStats})
 					} else {
 						// pre buffer
-						v.preRingBuffer.Add(&statsImage{Image: *bufImg.Ref(), VideoStats: v.videoStats})
+						v.preWriteBuffer.Add(&StatsImage{Image: *img.Ref(), VideoStats: v.videoStats})
 					}
 				}
+				processedImage.Cleanup()
+			case <-v.cancel:
+				break ReadLoop
+			}
+		}
+	}()
+
+	// output
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+	WriteLoop:
+		for {
+			select {
+			case <-v.recordChan:
+				v.record = true
+				v.lastActivityTime = time.Now()
+			case <-v.secTick.C:
+				if v.recording {
+					// write
+					v.writeBufferOut()
+				}
+
 				if v.record && !v.recording {
-					// open
-					firstItem, ok := v.preRingBuffer.TryGet()
-					if ok && firstItem.Image.IsFilled() {
-						firstImg := firstItem.Image
-						preFrames := v.preRingBuffer.GetAll()
-						preview := firstImg
-						if len(preFrames) > 0 {
-							// set preview to most recent image when triggered
-							preview = preFrames[len(preFrames)-1].Image
-						}
-						v.openRecord(firstImg, preview)
-						v.writeRecord(firstImg)
-						firstImg.Cleanup()
-						for _, item := range preFrames {
-							curImg := item.Image
-							v.writeRecord(curImg)
-							curImg.Cleanup()
-						}
-					}
+					// open and write
+					v.firstTimeWriteBufferOut()
 				} else if !v.record && v.recording {
 					// close
 					v.closeRecord()
 				}
-			case <-v.secTick.C:
+
 				if v.isRecordExpired() {
 					v.closeRecord()
 				}
@@ -234,35 +229,42 @@ func (v *VideoWriter) Start() {
 					v.closeRecord()
 				}
 			case <-v.cancel:
-				break Loop
+				break WriteLoop
 			}
 		}
+	}()
 
-		// cleanup recording
+	// cleanup
+	go func() {
+		wg.Wait()
 		if v.recording {
+			v.writeBufferOut()
 			v.closeRecord()
 		}
-		if bufImg != nil {
-			bufImg.Cleanup()
-		}
 
-		writerTick.Stop()
-		imageSub.Unsubscribe()
 		v.secTick.Stop()
-		v.preRingBuffer.Stop()
+		v.preWriteBuffer.Close()
+		v.writeBuffer.Close()
 		v.videoStats.Close()
-		close(v.done)
 		v.pubsub.Close()
+		close(v.done)
 	}()
 }
 
 // Trigger to start recording
 func (v *VideoWriter) Trigger() {
+	if v.IsDone() {
+		return
+	}
 	v.recordChan <- true
 }
 
 // Send Image to write
 func (v *VideoWriter) Send(img ProcessedImage) {
+	if v.IsDone() {
+		img.Cleanup()
+		return
+	}
 	v.pubsub.Publish(pubsubmutex.Message{Topic: topicWriterImages, Data: &img})
 }
 
@@ -312,6 +314,47 @@ func (v *VideoWriter) openRecord(img Image, preview Image) {
 		if v.savePreview {
 			SavePreview(preview, timeNow, v.saveDirectory, v.name, "", "")
 		}
+	}
+}
+
+func (v *VideoWriter) firstTimeWriteBufferOut() {
+	firstStatsImage, ok := v.preWriteBuffer.TryGetOldest()
+	if !ok {
+		firstStatsImage.Cleanup()
+		return
+	}
+	if !firstStatsImage.Image.IsFilled() {
+		firstStatsImage.Cleanup()
+		return
+	}
+	firstImg := firstStatsImage.Image
+	preStatsImages := v.preWriteBuffer.GetAll()
+	preFrames := make([]Image, 0)
+	for _, statsImageItem := range preStatsImages {
+		preFrames = append(preFrames, statsImageItem.Image)
+	}
+	preview := firstImg
+	if len(preFrames) > 0 {
+		// set preview to most recent image when triggered
+		preview = preFrames[len(preFrames)-1]
+	}
+	v.openRecord(firstImg, preview)
+	v.writeRecord(firstImg)
+	firstImg.Cleanup()
+	for _, curImg := range preFrames {
+		v.writeRecord(curImg)
+		curImg.Cleanup()
+	}
+}
+
+func (v *VideoWriter) writeBufferOut() {
+	statsImages := v.writeBuffer.GetAll()
+	for _, statsImage := range statsImages {
+		img := statsImage.Image
+		if img.IsFilled() {
+			v.writeRecord(img)
+		}
+		img.Cleanup()
 	}
 }
 
@@ -399,12 +442,32 @@ func (v *VideoWriter) GetFrameStats() (result *FrameStats) {
 
 // GetStats returns the FrameStats using pubsub
 func (v *VideoWriter) GetStats(timeoutMs int) (result *FrameStats) {
+	if v.IsDone() {
+		return
+	}
 	result = v.videoStats.GetStats(timeoutMs)
 	return
 }
 
 // GetStatsSub returns the subscriber
 func (v *VideoWriter) GetStatsSub() (result *pubsubmutex.Subscriber) {
+	if v.IsDone() {
+		return
+	}
 	result = v.videoStats.GetStatsSub()
 	return
+}
+
+func (v *VideoWriter) IsDone() bool {
+	isDone := false
+	select {
+	case _, ok := <-v.done:
+		if !ok {
+			isDone = true
+		}
+	default:
+		// not done and not ready
+	}
+
+	return isDone
 }

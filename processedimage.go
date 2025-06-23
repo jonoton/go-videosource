@@ -2,6 +2,7 @@ package videosource
 
 import (
 	"image"
+	"time"
 
 	"gocv.io/x/gocv"
 )
@@ -175,6 +176,10 @@ func NewProcessedImage(original Image) *ProcessedImage {
 	return p
 }
 
+func (p *ProcessedImage) CreatedTime() time.Time {
+	return p.Original.CreatedTime()
+}
+
 func (p *ProcessedImage) HasMotion() bool {
 	return len(p.Motions) > 0
 }
@@ -287,8 +292,8 @@ func (p *ProcessedImage) Clone() *ProcessedImage {
 }
 
 // Cleanup will cleanup the ProcessedImage
-func (p *ProcessedImage) Cleanup() {
-	p.Original.Cleanup()
+func (p *ProcessedImage) Cleanup() (filled bool, closed bool) {
+	filled, closed = p.Original.Cleanup()
 	for _, cur := range p.Motions {
 		cur.Cleanup()
 	}
@@ -301,6 +306,8 @@ func (p *ProcessedImage) Cleanup() {
 		cur.Cleanup()
 	}
 	p.Faces = make([]FaceInfo, 0)
+
+	return
 }
 
 // ProcessedImageByCreatedTime sorting ascending order
@@ -308,7 +315,7 @@ type ProcessedImageByCreatedTime []ProcessedImage
 
 func (b ProcessedImageByCreatedTime) Len() int { return len(b) }
 func (b ProcessedImageByCreatedTime) Less(i, j int) bool {
-	return b[i].Original.CreatedTime.Before(b[j].Original.CreatedTime)
+	return b[i].Original.createdTime.Before(b[j].Original.createdTime)
 }
 func (b ProcessedImageByCreatedTime) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
@@ -347,3 +354,27 @@ func (b ProcessedImageByFacePercent) Less(i, j int) bool {
 	return getHighestFacePercentage(b[i].Faces) > getHighestFacePercentage(b[j].Faces)
 }
 func (b ProcessedImageByFacePercent) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
+
+type StatsProcessedImage struct {
+	ProcessedImage ProcessedImage
+	VideoStats     *VideoStats
+}
+
+func (s *StatsProcessedImage) CreatedTime() time.Time {
+	return s.ProcessedImage.CreatedTime()
+}
+
+func (s *StatsProcessedImage) Ref() *StatsProcessedImage {
+	copy := &StatsProcessedImage{
+		ProcessedImage: *s.ProcessedImage.Ref(),
+		VideoStats:     s.VideoStats,
+	}
+	return copy
+}
+
+func (s *StatsProcessedImage) Cleanup() {
+	_, closed := s.ProcessedImage.Cleanup()
+	if closed {
+		s.VideoStats.AddDropped()
+	}
+}

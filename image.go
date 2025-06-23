@@ -12,16 +12,20 @@ import (
 // Image contains an image
 type Image struct {
 	SharedMat   *sharedmat.SharedMat
-	CreatedTime time.Time
+	createdTime time.Time
 }
 
 // NewImage creates a new Image
 func NewImage(mat gocv.Mat) *Image {
 	i := &Image{
 		SharedMat:   sharedmat.NewSharedMat(mat),
-		CreatedTime: time.Now(),
+		createdTime: time.Now(),
 	}
 	return i
+}
+
+func (i *Image) CreatedTime() time.Time {
+	return i.createdTime
 }
 
 // IsFilled checks the underlying image not empty
@@ -65,7 +69,7 @@ func (i *Image) Width() int {
 // Ref will create a copy and reference the underlying SharedMat
 func (i *Image) Ref() *Image {
 	copy := &Image{
-		CreatedTime: i.CreatedTime,
+		createdTime: i.createdTime,
 	}
 	if i.SharedMat != nil {
 		copy.SharedMat = i.SharedMat.Ref()
@@ -76,7 +80,7 @@ func (i *Image) Ref() *Image {
 // Clone will clone the Image
 func (i *Image) Clone() *Image {
 	clone := &Image{
-		CreatedTime: i.CreatedTime,
+		createdTime: i.createdTime,
 	}
 	if i.SharedMat != nil {
 		clone.SharedMat = i.SharedMat.Clone()
@@ -174,7 +178,7 @@ func (i *Image) ScaleToWidth(width int) Image {
 	if sharedmat.Filled(&i.SharedMat.Mat) {
 		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scaleEvenly, scaleEvenly, interpolationFlags)
 		scaled = *NewImage(dstMat.Clone())
-		scaled.CreatedTime = i.CreatedTime
+		scaled.createdTime = i.createdTime
 	} else {
 		scaled = *NewImage(dstMat.Clone())
 	}
@@ -187,5 +191,29 @@ func (i *Image) ScaleToWidth(width int) Image {
 type ImageByCreatedTime []Image
 
 func (b ImageByCreatedTime) Len() int           { return len(b) }
-func (b ImageByCreatedTime) Less(i, j int) bool { return b[i].CreatedTime.Before(b[j].CreatedTime) }
+func (b ImageByCreatedTime) Less(i, j int) bool { return b[i].createdTime.Before(b[j].createdTime) }
 func (b ImageByCreatedTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+
+type StatsImage struct {
+	Image      Image
+	VideoStats *VideoStats
+}
+
+func (s *StatsImage) CreatedTime() time.Time {
+	return s.Image.CreatedTime()
+}
+
+func (s *StatsImage) Ref() *StatsImage {
+	copy := &StatsImage{
+		Image:      *s.Image.Ref(),
+		VideoStats: s.VideoStats,
+	}
+	return copy
+}
+
+func (s *StatsImage) Cleanup() {
+	_, closed := s.Image.Cleanup()
+	if closed {
+		s.VideoStats.AddDropped()
+	}
+}

@@ -47,16 +47,6 @@ func (v *VideoReader) SetQuality(percent int) {
 	}
 }
 
-type statsImage struct {
-	Image      Image
-	VideoStats *VideoStats
-}
-
-func (s *statsImage) Cleanup() {
-	s.Image.Cleanup()
-	s.VideoStats.AddDropped()
-}
-
 func (v *VideoReader) getTickMs(fps int) time.Duration {
 	tickMs := 5
 	if fps > 0 {
@@ -73,16 +63,16 @@ func (v *VideoReader) Start() <-chan Image {
 			log.Warnln("VideoReader could not initialize", v.videoSource.GetName())
 		}
 		inFps := v.MaxSourceFps
-		inputLimiter := chanLimiter.New[*statsImage](inFps)
+		inputLimiter := chanLimiter.New[*StatsImage](inFps)
 
 		outFps := v.MaxOutputFps
-		outputLimiter := chanLimiter.New[*statsImage](outFps)
+		outputLimiter := chanLimiter.New[*StatsImage](outFps)
 
 		go func() {
 			defer outputLimiter.Stop()
 			for statsImg := range inputLimiter.Output() {
 				v.sourceStats.AddAccepted()
-				outputLimiter.Send(&statsImage{Image: statsImg.Image, VideoStats: &v.outputStats})
+				outputLimiter.Send(&StatsImage{Image: statsImg.Image, VideoStats: &v.outputStats})
 			}
 		}()
 
@@ -104,7 +94,7 @@ func (v *VideoReader) Start() <-chan Image {
 						if v.Quality > 0 && v.Quality < 100 {
 							image.ChangeQuality(v.Quality)
 						}
-						inputLimiter.Send(&statsImage{Image: image, VideoStats: &v.sourceStats})
+						inputLimiter.Send(&StatsImage{Image: image, VideoStats: &v.sourceStats})
 					}
 				case <-v.cancel:
 					break SourceLoop
