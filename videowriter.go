@@ -461,7 +461,7 @@ func (v *VideoWriter) GetStatsSub() (result *pubsubmutex.Subscriber) {
 func (v *VideoWriter) IsDone() bool {
 	isDone := false
 	select {
-	case _, ok := <-v.done:
+	case _, ok := <-v.cancel:
 		if !ok {
 			isDone = true
 		}
