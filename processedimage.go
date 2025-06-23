@@ -292,8 +292,8 @@ func (p *ProcessedImage) Clone() *ProcessedImage {
 }
 
 // Cleanup will cleanup the ProcessedImage
-func (p *ProcessedImage) Cleanup() (filled bool, closed bool) {
-	filled, closed = p.Original.Cleanup()
+func (p *ProcessedImage) Cleanup() {
+	p.Original.Cleanup()
 	for _, cur := range p.Motions {
 		cur.Cleanup()
 	}
@@ -306,8 +306,6 @@ func (p *ProcessedImage) Cleanup() (filled bool, closed bool) {
 		cur.Cleanup()
 	}
 	p.Faces = make([]FaceInfo, 0)
-
-	return
 }
 
 // ProcessedImageByCreatedTime sorting ascending order
@@ -373,8 +371,8 @@ func (s *StatsProcessedImage) Ref() *StatsProcessedImage {
 }
 
 func (s *StatsProcessedImage) Cleanup() {
-	_, closed := s.ProcessedImage.Cleanup()
-	if closed {
+	s.ProcessedImage.Cleanup()
+	if s.ProcessedImage.Original.SharedMat == nil {
 		s.VideoStats.AddDropped()
 	}
 }

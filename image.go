@@ -89,14 +89,13 @@ func (i *Image) Clone() *Image {
 }
 
 // Cleanup will cleanup the Image
-func (i *Image) Cleanup() (filled bool, closed bool) {
+func (i *Image) Cleanup() {
 	if i.SharedMat != nil {
-		filled, closed = i.SharedMat.Cleanup()
+		_, closed := i.SharedMat.Cleanup()
 		if closed {
 			i.SharedMat = nil
 		}
 	}
-	return
 }
 
 // GetRegion will return a new Image per rectangle parameter
@@ -212,8 +211,8 @@ func (s *StatsImage) Ref() *StatsImage {
 }
 
 func (s *StatsImage) Cleanup() {
-	_, closed := s.Image.Cleanup()
-	if closed {
+	s.Image.Cleanup()
+	if s.Image.SharedMat == nil {
 		s.VideoStats.AddDropped()
 	}
 }
