@@ -145,7 +145,7 @@ func (v *VideoReader) GetStatsSource(timeoutMs int) (result *FrameStats) {
 }
 
 // GetSourceStatsSub returns the subscriber
-func (v *VideoReader) GetSourceStatsSub() (result *pubsubmutex.Subscriber) {
+func (v *VideoReader) GetSourceStatsSub() (result *pubsubmutex.Subscriber[*FrameStats]) {
 	result = v.sourceStats.GetStatsSub()
 	return
 }
@@ -163,7 +163,7 @@ func (v *VideoReader) GetStatsOutput(timeoutMs int) (result *FrameStats) {
 }
 
 // GetOutputStatsSub returns the subscriber
-func (v *VideoReader) GetOutputStatsSub() (result *pubsubmutex.Subscriber) {
+func (v *VideoReader) GetOutputStatsSub() (result *pubsubmutex.Subscriber[*FrameStats]) {
 	result = v.outputStats.GetStatsSub()
 	return
 }

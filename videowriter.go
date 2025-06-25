@@ -133,6 +133,8 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 		activityType:     activityType,
 		PortableWidth:    1080,
 	}
+	pubsubmutex.RegisterTopic[*ProcessedImage](&v.pubsub, topicWriterImages)
+
 	return v
 }
 
@@ -160,13 +162,13 @@ func (v *VideoWriter) Start() {
 		if bufferSize < 0 {
 			bufferSize = 0
 		}
-		imageSub := v.pubsub.Subscribe(topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
+		imageSub, _ := pubsubmutex.Subscribe[*ProcessedImage](&v.pubsub, topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
 		defer imageSub.Unsubscribe()
 	ReadLoop:
 		for {
 			select {
 			case msg, ok := <-imageSub.Ch:
-				processedImage := msg.Data.(*ProcessedImage)
+				processedImage := msg.Data
 				if !ok {
 					if processedImage != nil {
 						processedImage.Cleanup()
@@ -265,7 +267,7 @@ func (v *VideoWriter) Send(img ProcessedImage) {
 		img.Cleanup()
 		return
 	}
-	v.pubsub.Publish(pubsubmutex.Message{Topic: topicWriterImages, Data: &img})
+	pubsubmutex.Publish(&v.pubsub, pubsubmutex.Message[*ProcessedImage]{Topic: topicWriterImages, Data: &img})
 }
 
 // Close notified by caller that input stream is done/closed
@@ -450,7 +452,7 @@ func (v *VideoWriter) GetStats(timeoutMs int) (result *FrameStats) {
 }
 
 // GetStatsSub returns the subscriber
-func (v *VideoWriter) GetStatsSub() (result *pubsubmutex.Subscriber) {
+func (v *VideoWriter) GetStatsSub() (result *pubsubmutex.Subscriber[*FrameStats]) {
 	if v.IsDone() {
 		return
 	}

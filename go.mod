@@ -6,7 +6,7 @@ toolchain go1.23.5
 
 require (
 	github.com/jonoton/go-chanlimiter v1.3.0
-	github.com/jonoton/go-pubsubmutex v1.10.0
+	github.com/jonoton/go-pubsubmutex v1.11.0
 	github.com/jonoton/go-sharedmat v1.0.0
 	github.com/jonoton/go-temporalbuffer v1.4.0
 	github.com/sirupsen/logrus v1.9.3

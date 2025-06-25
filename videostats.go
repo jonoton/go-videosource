@@ -56,6 +56,11 @@ func NewVideoStats() *VideoStats {
 		pubsub:            *pubsubmutex.NewPubSub(),
 		cancel:            make(chan bool),
 	}
+	pubsubmutex.RegisterTopic[any](&v.pubsub, topicVideoStatsAddAccepted)
+	pubsubmutex.RegisterTopic[any](&v.pubsub, topicVideoStatsAddDropped)
+	pubsubmutex.RegisterTopic[any](&v.pubsub, topicVideoStatsGetCurrentStats)
+	pubsubmutex.RegisterTopic[*FrameStats](&v.pubsub, topicVideoStatsCurrentStats)
+
 	return v
 }
 
@@ -65,11 +70,11 @@ func (v *VideoStats) Start() {
 		defer v.clearPerSecond()
 		tick := time.NewTicker(1 * time.Second)
 		defer tick.Stop()
-		addAcceptedSub := v.pubsub.Subscribe(topicVideoStatsAddAccepted, v.pubsub.GetUniqueSubscriberID(), 10)
+		addAcceptedSub, _ := pubsubmutex.Subscribe[any](&v.pubsub, topicVideoStatsAddAccepted, v.pubsub.GetUniqueSubscriberID(), 10)
 		defer addAcceptedSub.Unsubscribe()
-		addDroppedSub := v.pubsub.Subscribe(topicVideoStatsAddDropped, v.pubsub.GetUniqueSubscriberID(), 10)
+		addDroppedSub, _ := pubsubmutex.Subscribe[any](&v.pubsub, topicVideoStatsAddDropped, v.pubsub.GetUniqueSubscriberID(), 10)
 		defer addDroppedSub.Unsubscribe()
-		getFrameStatsSub := v.pubsub.Subscribe(topicVideoStatsGetCurrentStats, v.pubsub.GetUniqueSubscriberID(), 10)
+		getFrameStatsSub, _ := pubsubmutex.Subscribe[any](&v.pubsub, topicVideoStatsGetCurrentStats, v.pubsub.GetUniqueSubscriberID(), 10)
 		defer getFrameStatsSub.Unsubscribe()
 	Loop:
 		for {
@@ -114,7 +119,7 @@ func (v *VideoStats) tick() {
 
 // AddAccepted adds an accepted image
 func (v *VideoStats) AddAccepted() {
-	v.pubsub.Publish(pubsubmutex.Message{Topic: topicVideoStatsAddAccepted, Data: nil})
+	pubsubmutex.Publish(&v.pubsub, pubsubmutex.Message[any]{Topic: topicVideoStatsAddAccepted, Data: nil})
 }
 
 func (v *VideoStats) addAccepted() {
@@ -124,7 +129,7 @@ func (v *VideoStats) addAccepted() {
 
 // AddDropped adds a dropped image
 func (v *VideoStats) AddDropped() {
-	v.pubsub.Publish(pubsubmutex.Message{Topic: topicVideoStatsAddDropped, Data: nil})
+	pubsubmutex.Publish(&v.pubsub, pubsubmutex.Message[any]{Topic: topicVideoStatsAddDropped, Data: nil})
 }
 
 func (v *VideoStats) addDropped() {
@@ -134,10 +139,10 @@ func (v *VideoStats) addDropped() {
 
 // GetStats returns the FrameStats using pubsub
 func (v *VideoStats) GetStats(timeoutMs int) (result *FrameStats) {
-	r := v.pubsub.SendReceive(topicVideoStatsGetCurrentStats, topicVideoStatsCurrentStats,
+	r, ok := pubsubmutex.SendReceive[any, *FrameStats](&v.pubsub, topicVideoStatsGetCurrentStats, topicVideoStatsCurrentStats,
 		nil, timeoutMs)
-	if r != nil {
-		result = r.(*FrameStats)
+	if ok && r != nil {
+		result = r
 	}
 	return
 }
@@ -159,11 +164,14 @@ func (v *VideoStats) clearPerSecond() {
 }
 
 func (v *VideoStats) publishCurrentStats() {
-	v.pubsub.Publish(pubsubmutex.Message{Topic: topicVideoStatsCurrentStats, Data: v.GetFrameStats()})
+	pubsubmutex.Publish(&v.pubsub, pubsubmutex.Message[*FrameStats]{Topic: topicVideoStatsCurrentStats, Data: v.GetFrameStats()})
 }
 
 // GetStatsSub returns the subscriber
-func (v *VideoStats) GetStatsSub() (result *pubsubmutex.Subscriber) {
-	result = v.pubsub.Subscribe(topicVideoStatsCurrentStats, v.pubsub.GetUniqueSubscriberID(), 10)
+func (v *VideoStats) GetStatsSub() (result *pubsubmutex.Subscriber[*FrameStats]) {
+	r, err := pubsubmutex.Subscribe[*FrameStats](&v.pubsub, topicVideoStatsCurrentStats, v.pubsub.GetUniqueSubscriberID(), 10)
+	if err == nil && r != nil {
+		result = r
+	}
 	return
 }

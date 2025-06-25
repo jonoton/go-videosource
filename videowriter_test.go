@@ -42,7 +42,7 @@ func TestVideoWriter(t *testing.T) {
 		outputStatsSub := reader.GetOutputStatsSub()
 		defer outputStatsSub.Unsubscribe()
 		for msg := range outputStatsSub.Ch {
-			frameStats := msg.Data.(*FrameStats)
+			frameStats := msg.Data
 			fmt.Println("Source Output Stats: " + frameStats.String())
 		}
 	}()
@@ -52,7 +52,7 @@ func TestVideoWriter(t *testing.T) {
 		writerStatsSub := writer.GetStatsSub()
 		defer writerStatsSub.Unsubscribe()
 		for msg := range writerStatsSub.Ch {
-			frameStats := msg.Data.(*FrameStats)
+			frameStats := msg.Data
 			fmt.Println("Writer Output Stats: " + frameStats.String())
 		}
 	}()

@@ -37,7 +37,7 @@ func TestFileSource(t *testing.T) {
 		sourceStatsSub := f.GetSourceStatsSub()
 		defer sourceStatsSub.Unsubscribe()
 		for msg := range sourceStatsSub.Ch {
-			frameStats := msg.Data.(*FrameStats)
+			frameStats := msg.Data
 			fmt.Println("Input  Stats: " + frameStats.String())
 		}
 	}()
@@ -47,7 +47,7 @@ func TestFileSource(t *testing.T) {
 		outputStatsSub := f.GetOutputStatsSub()
 		defer outputStatsSub.Unsubscribe()
 		for msg := range outputStatsSub.Ch {
-			frameStats := msg.Data.(*FrameStats)
+			frameStats := msg.Data
 			fmt.Println("Output Stats: " + frameStats.String())
 		}
 	}()
