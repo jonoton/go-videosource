@@ -91,10 +91,12 @@ func (v *VideoReader) Start() <-chan Image {
 						log.Infoln("Done source", v.videoSource.GetName())
 						break SourceLoop
 					} else if image.IsFilled() {
+						img := image
 						if v.Quality > 0 && v.Quality < 100 {
-							image.ChangeQuality(v.Quality)
+							img = image.ChangeQuality(v.Quality)
+							image.Cleanup()
 						}
-						inputLimiter.Send(&StatsImage{Image: image, VideoStats: &v.sourceStats})
+						inputLimiter.Send(&StatsImage{Image: img, VideoStats: &v.sourceStats})
 					}
 				case <-v.cancel:
 					break SourceLoop

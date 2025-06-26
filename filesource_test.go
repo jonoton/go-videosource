@@ -14,6 +14,7 @@ import (
 
 func TestFileSource(t *testing.T) {
 	f := NewVideoReader(NewFileSource("cam5", "/Videos/cam5.mp4"), 8, 6)
+	// f.SetQuality(10)
 	images := f.Start()
 	defer f.Stop()
 

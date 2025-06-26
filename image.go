@@ -114,26 +114,31 @@ func (i *Image) GetRegion(rect image.Rectangle) (region Image) {
 	return
 }
 
-// ChangeQuality will change the Image quality to percent param
-func (i *Image) ChangeQuality(percent int) {
-	if i.SharedMat == nil {
-		return
+// ChangeQuality will return a copy of the Image with the quality set to percent
+func (i *Image) ChangeQuality(percent int) Image {
+	if percent <= 0 || percent >= 100 {
+		return *i.Ref()
 	}
+	if i.SharedMat == nil {
+		return *i.Ref()
+	}
+	var updatedImage Image
 	i.SharedMat.Guard.RLock()
 	if sharedmat.Filled(&i.SharedMat.Mat) {
 		jpgParams := []int{gocv.IMWriteJpegQuality, percent}
 		encoded, err := gocv.IMEncodeWithParams(gocv.JPEGFileExt, i.SharedMat.Mat, jpgParams)
-		i.SharedMat.Guard.RUnlock()
 		if err == nil {
 			newMat, err := gocv.IMDecode(encoded.GetBytes(), gocv.IMReadUnchanged)
 			if err == nil {
-				i.SharedMat.Cleanup()
-				i.SharedMat = sharedmat.NewSharedMat(newMat)
+				updatedImage = *NewImage(newMat.Clone())
+				updatedImage.createdTime = i.createdTime
 			}
+			newMat.Close()
 		}
-	} else {
-		i.SharedMat.Guard.RUnlock()
+		encoded.Close()
 	}
+	i.SharedMat.Guard.RUnlock()
+	return updatedImage
 }
 
 // EncodedQuality returns a JPEG byte array with the given quality percentage
@@ -147,8 +152,9 @@ func (i *Image) EncodedQuality(percent int) []byte {
 		jpgParams := []int{gocv.IMWriteJpegQuality, percent}
 		encoded, err := gocv.IMEncodeWithParams(gocv.JPEGFileExt, i.SharedMat.Mat, jpgParams)
 		if err == nil {
-			imgArray = encoded.GetBytes()
+			imgArray = append([]byte{}, encoded.GetBytes()...)
 		}
+		encoded.Close()
 	}
 	i.SharedMat.Guard.RUnlock()
 	return imgArray

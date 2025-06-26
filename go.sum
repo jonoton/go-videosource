@@ -5,10 +5,10 @@ github.com/jonoton/go-chanlimiter v1.3.0 h1:wl8BjbUYxSh/bdLUKUtlzxrNJQTWJX1uO3El
 github.com/jonoton/go-chanlimiter v1.3.0/go.mod h1:9HEjPUAwTPfUP24ziWfjpLUCjNX8oiYXh9TXT1Wjkxg=
 github.com/jonoton/go-pubsubmutex v1.11.0 h1:EydUBkrfcdyWYH8EvUwNaiKdZrNgZp2qyVwpXMODH1w=
 github.com/jonoton/go-pubsubmutex v1.11.0/go.mod h1:GBBhtLidNH0qT+T2OcRMGIcJg3Oqy/1pgP8cWOBbcI0=
-github.com/jonoton/go-sharedmat v1.0.0 h1:mLpifo23IVjnehJNryozG21WM4JJa8EBMFOFynPpzEY=
-github.com/jonoton/go-sharedmat v1.0.0/go.mod h1:ZCzG6r3ziubgE5JNg2c7uCCKRHeWN5Xi4I9K74jocz4=
-github.com/jonoton/go-temporalbuffer v1.4.0 h1:bBoAE/I6zA5rp/5NRaJESSSA9JqxTnKcDVadPTIgoDo=
-github.com/jonoton/go-temporalbuffer v1.4.0/go.mod h1:KBuuwUU8UulFqhTYRhZwP3m4vCLUpYH5K/VV9QP6nrM=
+github.com/jonoton/go-sharedmat v1.1.0 h1:eRT0AvH7Zo/M6ugI0gDF4sTNYNFNzmCU8ZycQjNvqMQ=
+github.com/jonoton/go-sharedmat v1.1.0/go.mod h1:7/DFGqLQS6Iu7uBPmCMq7erEXncsLgXXSI1/udM0DEs=
+github.com/jonoton/go-temporalbuffer v1.5.0 h1:X4Gbjwu9WectUyWcyFDKmke7SItPEGKH959pCTVqQWQ=
+github.com/jonoton/go-temporalbuffer v1.5.0/go.mod h1:KBuuwUU8UulFqhTYRhZwP3m4vCLUpYH5K/VV9QP6nrM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
