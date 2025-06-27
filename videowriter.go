@@ -169,6 +169,7 @@ func (v *VideoWriter) Start() {
 		}
 		imageSub, _ := pubsubmutex.Subscribe[*ProcessedImage](&v.pubsub, topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
 		defer imageSub.Unsubscribe()
+		writeBufferAdd := false
 	ReadLoop:
 		for {
 			select {
@@ -185,12 +186,18 @@ func (v *VideoWriter) Start() {
 				}
 				v.checkLastActivityTime(processedImage)
 
+				if writeBufferAdd && !v.recording {
+					v.flushWriteBuffer()
+					writeBufferAdd = false
+				}
+
 				// buffer for writing
 				img := processedImage.Original
 				if img.IsFilled() {
 					if v.recording {
 						// write buffer
 						v.writeBuffer.Add(&StatsImage{Image: *img.Ref(), VideoStats: v.videoStats})
+						writeBufferAdd = true
 					} else {
 						// pre buffer
 						v.preWriteBuffer.Add(&StatsImage{Image: *img.Ref(), VideoStats: v.videoStats})
@@ -327,7 +334,9 @@ func (v *VideoWriter) openRecord(img Image, preview Image) {
 func (v *VideoWriter) firstTimeWriteBufferOut() {
 	firstStatsImage, ok := v.preWriteBuffer.TryGetOldest()
 	if !ok {
-		firstStatsImage.Cleanup()
+		if firstStatsImage != nil {
+			firstStatsImage.Cleanup()
+		}
 		return
 	}
 	if !firstStatsImage.Image.IsFilled() {
@@ -357,6 +366,9 @@ func (v *VideoWriter) firstTimeWriteBufferOut() {
 func (v *VideoWriter) writeBufferOut() {
 	statsImages := v.writeBuffer.GetAll()
 	for _, statsImage := range statsImages {
+		if statsImage == nil {
+			continue
+		}
 		img := statsImage.Image
 		if img.IsFilled() {
 			v.writeRecord(img)
@@ -374,6 +386,16 @@ func (v *VideoWriter) closeRecord() {
 	}
 	v.startTime = time.Time{}
 	v.recording = false
+	v.flushWriteBuffer()
+}
+
+func (v *VideoWriter) flushWriteBuffer() {
+	statsImgs := v.writeBuffer.GetAll()
+	for _, statsImg := range statsImgs {
+		if statsImg != nil {
+			statsImg.Cleanup()
+		}
+	}
 }
 
 func (v *VideoWriter) isRecordExpired() bool {

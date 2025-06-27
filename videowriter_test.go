@@ -15,24 +15,26 @@ import (
 )
 
 func TestVideoWriter(t *testing.T) {
+	camName := "cam5"
 	inFps := 8
 	outFps := 30
-	startWriteFrameCount := inFps * 10
-	stopWriteFrameCount := inFps * 20
+	startWriteFrameCount1 := inFps * 1
+	startWriteFrameCount2 := inFps * 18
+	closeWriteFrameCount := inFps * 30
 	shutdownFrameCount := inFps * 30
 
-	writerBufferSec := 1
-	writerMaxPreSec := 3
-	writerTimeoutSec := 10
-	writerMaxSec := 30
+	writerBufferSec := 0
+	writerMaxPreSec := 2
+	writerTimeoutSec := 1
+	writerMaxSec := 6
 	writerOutFps := 8
 
-	reader := NewVideoReader(NewFileSource("cam5", "/Videos/cam5.mp4"), inFps, outFps)
+	reader := NewVideoReader(NewFileSource(camName, "/Videos/"+camName+".mp4"), inFps, outFps)
 	images := reader.Start()
 
 	saveDir := filepath.Clean("/Videos/videowriter-test") + string(filepath.Separator)
 	os.MkdirAll(saveDir, os.ModePerm)
-	writer := NewVideoWriter("cam5", saveDir, "mp4v", "mp4", writerBufferSec, writerMaxPreSec, writerTimeoutSec, writerMaxSec, writerOutFps, true, true, false, ActivityImage)
+	writer := NewVideoWriter(camName, saveDir, "mp4v", "mp4", writerBufferSec, writerMaxPreSec, writerTimeoutSec, writerMaxSec, writerOutFps, true, true, false, ActivityImage)
 	writer.Start()
 
 	wg := sync.WaitGroup{}
@@ -73,12 +75,15 @@ func TestVideoWriter(t *testing.T) {
 		// writer.Trigger()
 
 		// trigger after duration of frames
-		if frameCount >= startWriteFrameCount {
+		if frameCount >= startWriteFrameCount1 {
+			writer.Trigger()
+		}
+		if frameCount >= startWriteFrameCount2 {
 			writer.Trigger()
 		}
 		fmt.Println("SharedMat Profile Count:", sharedmat.SharedMatProfile.Count())
 
-		if frameCount >= stopWriteFrameCount {
+		if frameCount >= closeWriteFrameCount {
 			writer.Close()
 		}
 
