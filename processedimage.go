@@ -372,7 +372,7 @@ func (s *StatsProcessedImage) Ref() *StatsProcessedImage {
 
 func (s *StatsProcessedImage) Cleanup() {
 	s.ProcessedImage.Cleanup()
-	if s.ProcessedImage.Original.SharedMat == nil {
+	if s.ProcessedImage.Original.SharedMat == nil && s.VideoStats != nil {
 		s.VideoStats.AddDropped()
 	}
 }

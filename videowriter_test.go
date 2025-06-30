@@ -15,18 +15,18 @@ import (
 )
 
 func TestVideoWriter(t *testing.T) {
-	camName := "cam5"
+	camName := "cam8"
 	inFps := 8
 	outFps := 30
-	startWriteFrameCount1 := inFps * 1
-	startWriteFrameCount2 := inFps * 18
-	closeWriteFrameCount := inFps * 30
+	startWriteFrameCount1 := inFps * 6
+	startWriteFrameCount2 := inFps * 30
+	closeWriteFrameCount := inFps * 14
 	shutdownFrameCount := inFps * 30
 
 	writerBufferSec := 0
-	writerMaxPreSec := 2
+	writerMaxPreSec := 4
 	writerTimeoutSec := 1
-	writerMaxSec := 6
+	writerMaxSec := 20
 	writerOutFps := 8
 
 	reader := NewVideoReader(NewFileSource(camName, "/Videos/"+camName+".mp4"), inFps, outFps)

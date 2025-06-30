@@ -118,8 +118,8 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 			temporalbuffer.WithReadContinuity(false),
 		),
 		writeBuffer: *temporalbuffer.New[*StatsImage](outFps,
-			temporalbuffer.WithFillStrategy(temporalbuffer.PadWithNewest),
-			temporalbuffer.WithDropStrategy(temporalbuffer.DropOldest),
+			temporalbuffer.WithFillStrategy(temporalbuffer.ResampleTimeline),
+			temporalbuffer.WithDropStrategy(temporalbuffer.DropClosest),
 			temporalbuffer.WithReadContinuity(false),
 		),
 
@@ -356,7 +356,13 @@ func (v *VideoWriter) firstTimeWriteBufferOut() {
 	}
 	v.openRecord(firstImg, preview)
 	v.writeRecord(firstImg)
+	lastImg := firstImg.Ref()
 	firstImg.Cleanup()
+	if len(preFrames) > 0 {
+		lastImg.Cleanup()
+		lastImg = preFrames[len(preFrames)-1].Ref()
+	}
+	v.writeBuffer.Add(&StatsImage{Image: *lastImg, VideoStats: v.videoStats})
 	for _, curImg := range preFrames {
 		v.writeRecord(curImg)
 		curImg.Cleanup()
@@ -365,13 +371,20 @@ func (v *VideoWriter) firstTimeWriteBufferOut() {
 
 func (v *VideoWriter) writeBufferOut() {
 	statsImages := v.writeBuffer.GetAll()
-	for _, statsImage := range statsImages {
+	lastStatsImageIndex := len(statsImages) - 1
+	for index, statsImage := range statsImages {
 		if statsImage == nil {
 			continue
 		}
 		img := statsImage.Image
-		if img.IsFilled() {
-			v.writeRecord(img)
+		if !img.IsFilled() {
+			img.Cleanup()
+			continue
+		}
+		v.writeRecord(img)
+		if index == lastStatsImageIndex {
+			lastImg := img.Ref()
+			v.writeBuffer.Add(&StatsImage{Image: *lastImg, VideoStats: v.videoStats})
 		}
 		img.Cleanup()
 	}

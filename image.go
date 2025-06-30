@@ -218,7 +218,7 @@ func (s *StatsImage) Ref() *StatsImage {
 
 func (s *StatsImage) Cleanup() {
 	s.Image.Cleanup()
-	if s.Image.SharedMat == nil {
+	if s.Image.SharedMat == nil && s.VideoStats != nil {
 		s.VideoStats.AddDropped()
 	}
 }
