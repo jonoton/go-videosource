@@ -198,27 +198,3 @@ type ImageByCreatedTime []Image
 func (b ImageByCreatedTime) Len() int           { return len(b) }
 func (b ImageByCreatedTime) Less(i, j int) bool { return b[i].createdTime.Before(b[j].createdTime) }
 func (b ImageByCreatedTime) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
-
-type StatsImage struct {
-	Image      Image
-	VideoStats *VideoStats
-}
-
-func (s *StatsImage) CreatedTime() time.Time {
-	return s.Image.CreatedTime()
-}
-
-func (s *StatsImage) Ref() *StatsImage {
-	copy := &StatsImage{
-		Image:      *s.Image.Ref(),
-		VideoStats: s.VideoStats,
-	}
-	return copy
-}
-
-func (s *StatsImage) Cleanup() {
-	s.Image.Cleanup()
-	if s.Image.SharedMat == nil && s.VideoStats != nil {
-		s.VideoStats.AddDropped()
-	}
-}

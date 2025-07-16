@@ -15,26 +15,30 @@ import (
 )
 
 func TestVideoWriter(t *testing.T) {
-	camName := "cam8"
-	inFps := 8
-	outFps := 30
-	startWriteFrameCount1 := inFps * 6
-	startWriteFrameCount2 := inFps * 30
-	closeWriteFrameCount := inFps * 14
-	shutdownFrameCount := inFps * 30
+	camName := "cam5"
+	readerInFps := 8
+	readerOutFps := 8
+	readerShutdownFrameCount := readerInFps * 35
 
 	writerBufferSec := 0
-	writerMaxPreSec := 4
-	writerTimeoutSec := 1
-	writerMaxSec := 20
+	writerMaxPreSec := 2
+	writerTimeoutSec := 35
+	writerMaxSec := 35
 	writerOutFps := 8
+	startWriteFrameCount1 := readerOutFps * 8
+	startWriteFrameCount2 := readerOutFps * 18
+	closeWriteFrameCount := readerOutFps * 35
+	isContinuous := false
 
-	reader := NewVideoReader(NewFileSource(camName, "/Videos/"+camName+".mp4"), inFps, outFps)
+	reader := NewVideoReader(NewFileSource(camName, "/Videos/"+camName+".mp4"),
+		readerInFps, readerOutFps)
 	images := reader.Start()
 
 	saveDir := filepath.Clean("/Videos/videowriter-test") + string(filepath.Separator)
 	os.MkdirAll(saveDir, os.ModePerm)
-	writer := NewVideoWriter(camName, saveDir, "mp4v", "mp4", writerBufferSec, writerMaxPreSec, writerTimeoutSec, writerMaxSec, writerOutFps, true, true, false, ActivityImage)
+	writer := NewVideoWriter(camName, saveDir, "mp4v", "mp4",
+		writerBufferSec, writerMaxPreSec, writerTimeoutSec, writerMaxSec, writerOutFps,
+		true, true, false, ActivityImage)
 	writer.Start()
 
 	wg := sync.WaitGroup{}
@@ -69,10 +73,10 @@ func TestVideoWriter(t *testing.T) {
 		window.IMShow(mat)
 		window.WaitKey(5)
 
-		writer.Send(*NewProcessedImage(img))
-
 		// continuous writing
-		// writer.Trigger()
+		if isContinuous {
+			writer.Trigger()
+		}
 
 		// trigger after duration of frames
 		if frameCount >= startWriteFrameCount1 {
@@ -81,16 +85,19 @@ func TestVideoWriter(t *testing.T) {
 		if frameCount >= startWriteFrameCount2 {
 			writer.Trigger()
 		}
+
+		writer.Send(*NewProcessedImage(*img.Ref()))
+
 		fmt.Println("SharedMat Profile Count:", sharedmat.SharedMatProfile.Count())
 
 		if frameCount >= closeWriteFrameCount {
 			writer.Close()
 		}
 
-		if frameCount >= shutdownFrameCount {
+		if frameCount >= readerShutdownFrameCount {
 			reader.Stop()
-			break
 		}
+		img.Cleanup()
 	}
 	reader.Stop()
 	reader.Wait()

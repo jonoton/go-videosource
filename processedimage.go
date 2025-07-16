@@ -352,27 +352,3 @@ func (b ProcessedImageByFacePercent) Less(i, j int) bool {
 	return getHighestFacePercentage(b[i].Faces) > getHighestFacePercentage(b[j].Faces)
 }
 func (b ProcessedImageByFacePercent) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
-
-type StatsProcessedImage struct {
-	ProcessedImage ProcessedImage
-	VideoStats     *VideoStats
-}
-
-func (s *StatsProcessedImage) CreatedTime() time.Time {
-	return s.ProcessedImage.CreatedTime()
-}
-
-func (s *StatsProcessedImage) Ref() *StatsProcessedImage {
-	copy := &StatsProcessedImage{
-		ProcessedImage: *s.ProcessedImage.Ref(),
-		VideoStats:     s.VideoStats,
-	}
-	return copy
-}
-
-func (s *StatsProcessedImage) Cleanup() {
-	s.ProcessedImage.Cleanup()
-	if s.ProcessedImage.Original.SharedMat == nil && s.VideoStats != nil {
-		s.VideoStats.AddDropped()
-	}
-}

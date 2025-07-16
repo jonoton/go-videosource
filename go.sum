@@ -1,10 +1,12 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/jonoton/go-chanlimiter v1.3.0 h1:wl8BjbUYxSh/bdLUKUtlzxrNJQTWJX1uO3ElXUO1HmU=
-github.com/jonoton/go-chanlimiter v1.3.0/go.mod h1:9HEjPUAwTPfUP24ziWfjpLUCjNX8oiYXh9TXT1Wjkxg=
+github.com/jonoton/go-framebuffer v1.1.0 h1:MDojsBHfWF1TM/WYK8P38M2ld6IAFo5lqnQ//5J5pLY=
+github.com/jonoton/go-framebuffer v1.1.0/go.mod h1:3RHwusRh/BTa2Yhc9LCZSXFRIKZ7YgwBx1EE1pafN00=
 github.com/jonoton/go-pubsubmutex v1.11.0 h1:EydUBkrfcdyWYH8EvUwNaiKdZrNgZp2qyVwpXMODH1w=
 github.com/jonoton/go-pubsubmutex v1.11.0/go.mod h1:GBBhtLidNH0qT+T2OcRMGIcJg3Oqy/1pgP8cWOBbcI0=
+github.com/jonoton/go-ringbuffer v1.6.0 h1:TsGZEfnwCLRwVZ9nEtnqhDPSgbk+TuoSI8WWMaa5fNQ=
+github.com/jonoton/go-ringbuffer v1.6.0/go.mod h1:FT9MtKbkAhqwoe8oT/fYND56TchFY3TnRDYS3LohIi0=
 github.com/jonoton/go-sharedmat v1.1.0 h1:eRT0AvH7Zo/M6ugI0gDF4sTNYNFNzmCU8ZycQjNvqMQ=
 github.com/jonoton/go-sharedmat v1.1.0/go.mod h1:7/DFGqLQS6Iu7uBPmCMq7erEXncsLgXXSI1/udM0DEs=
 github.com/jonoton/go-temporalbuffer v1.6.0 h1:QbBJA1REl/txtvsFYBkEnN22FoSmyW1YGU2EX0mLZIs=

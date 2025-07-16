@@ -1,25 +1,28 @@
 package videosource
 
 import (
+	"context"
 	"sync"
 	"time"
 
-	chanLimiter "github.com/jonoton/go-chanlimiter"
-	pubsubmutex "github.com/jonoton/go-pubsubmutex"
+	"github.com/jonoton/go-framebuffer"
+	"github.com/jonoton/go-pubsubmutex"
 	log "github.com/sirupsen/logrus"
 )
 
 // VideoReader reads a VideoSource
 type VideoReader struct {
-	videoSource  VideoSource
-	sourceStats  VideoStats
-	outputStats  VideoStats
-	done         chan bool
-	cancel       chan bool
-	cancelOnce   sync.Once
-	MaxSourceFps int
-	MaxOutputFps int
-	Quality      int
+	videoSource   VideoSource
+	sourceStats   VideoStats
+	outputStats   VideoStats
+	done          chan bool
+	cancel        chan bool
+	cancelOnce    sync.Once
+	MaxSourceFps  int
+	MaxOutputFps  int
+	Quality       int
+	Speed         float64
+	DropTimeoutMs int
 }
 
 // NewVideoReader creates a new VideoReader
@@ -28,14 +31,16 @@ func NewVideoReader(videoSource VideoSource, maxSourceFps int, maxOutputFps int)
 		return nil
 	}
 	v := &VideoReader{
-		videoSource:  videoSource,
-		sourceStats:  *NewVideoStats(),
-		outputStats:  *NewVideoStats(),
-		done:         make(chan bool),
-		cancel:       make(chan bool),
-		MaxSourceFps: maxSourceFps,
-		MaxOutputFps: maxOutputFps,
-		Quality:      100,
+		videoSource:   videoSource,
+		sourceStats:   *NewVideoStats(),
+		outputStats:   *NewVideoStats(),
+		done:          make(chan bool),
+		cancel:        make(chan bool),
+		MaxSourceFps:  maxSourceFps,
+		MaxOutputFps:  maxOutputFps,
+		Quality:       100,
+		Speed:         1.0,
+		DropTimeoutMs: 250,
 	}
 	return v
 }
@@ -47,10 +52,21 @@ func (v *VideoReader) SetQuality(percent int) {
 	}
 }
 
+// SetSpeed sets the speed of playback. Must be set prior to start.
+func (v *VideoReader) SetSpeed(speed float64) {
+	if speed <= 0.0 {
+		speed = 1.0
+	}
+	v.Speed = speed
+}
+
 func (v *VideoReader) getTickMs(fps int) time.Duration {
 	tickMs := 5
 	if fps > 0 {
 		tickMs = 1000 / fps
+		if v.Speed != 0.0 && v.Speed != 1.0 {
+			tickMs = int(float64(tickMs) / v.Speed)
+		}
 	}
 	return time.Duration(tickMs)
 }
@@ -63,24 +79,20 @@ func (v *VideoReader) Start() <-chan Image {
 			log.Warnln("VideoReader could not initialize", v.videoSource.GetName())
 		}
 		inFps := v.MaxSourceFps
-		inputLimiter := chanLimiter.New[*StatsImage](inFps)
-
 		outFps := v.MaxOutputFps
-		outputLimiter := chanLimiter.New[*StatsImage](outFps)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		frameBuffer := framebuffer.NewBuffer(ctx, uint(outFps),
+			framebuffer.WithStaleFrameTolerance[*Image](time.Second))
+		if v.Speed != 0.0 && v.Speed != 1.0 {
+			frameBuffer.SetSpeed(v.Speed)
+		}
+
+		v.outputStats.Start()
 
 		go func() {
-			defer outputLimiter.Stop()
-			for statsImg := range inputLimiter.Output() {
-				v.sourceStats.AddAccepted()
-				outputLimiter.Send(&StatsImage{Image: statsImg.Image, VideoStats: &v.outputStats})
-			}
-		}()
-
-		go func() {
-			defer inputLimiter.Stop()
 			v.sourceStats.Start()
 			tick := time.NewTicker(v.getTickMs(inFps) * time.Millisecond)
-			defer tick.Stop()
 		SourceLoop:
 			for {
 				select {
@@ -90,25 +102,43 @@ func (v *VideoReader) Start() <-chan Image {
 						image.Cleanup()
 						log.Infoln("Done source", v.videoSource.GetName())
 						break SourceLoop
-					} else if image.IsFilled() {
+					}
+					if image.IsFilled() {
 						img := image
 						if v.Quality > 0 && v.Quality < 100 {
 							img = image.ChangeQuality(v.Quality)
 							image.Cleanup()
 						}
-						inputLimiter.Send(&StatsImage{Image: img, VideoStats: &v.sourceStats})
+						frameBuffer.AddFrame(&img)
+						v.sourceStats.AddAccepted()
+					} else {
+						v.sourceStats.AddDropped()
 					}
 				case <-v.cancel:
 					break SourceLoop
 				}
 			}
+			tick.Stop()
+			frameBuffer.Drain()
+			frameBuffer.Close()
 		}()
 
-		v.outputStats.Start()
-		for statsImg := range outputLimiter.Output() {
-			if statsImg.Image.IsFilled() {
-				images <- statsImg.Image
-				v.outputStats.AddAccepted()
+		for img := range frameBuffer.Frames() {
+			if img == nil {
+				v.outputStats.AddDropped()
+				continue
+			}
+			if img.IsFilled() {
+				select {
+				case images <- *img:
+					v.outputStats.AddAccepted()
+				case <-time.After(time.Duration(v.DropTimeoutMs) * time.Millisecond):
+					img.Cleanup()
+					v.outputStats.AddDropped()
+				}
+			} else {
+				img.Cleanup()
+				v.outputStats.AddDropped()
 			}
 		}
 
