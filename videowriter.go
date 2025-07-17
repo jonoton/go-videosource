@@ -290,9 +290,7 @@ func (v *VideoWriter) Start() {
 					}
 				}
 			}
-			if v.recording {
-				v.closeRecord()
-			}
+			v.closeRecord()
 			v.cleanupPreviewImg()
 		}()
 
