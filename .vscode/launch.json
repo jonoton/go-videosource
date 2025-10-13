@@ -17,6 +17,18 @@
             "buildFlags": "-tags 'config profile'",
         },
         {
+            "name": "TestIPCamSource",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}",
+            "args": [
+                "-test.run",
+                "TestIPCamSource"
+            ],
+            "buildFlags": "-tags 'config profile'",
+        },
+        {
             "name": "TestVideoWriter",
             "type": "go",
             "request": "launch",

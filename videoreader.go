@@ -164,6 +164,14 @@ func (v *VideoReader) Wait() {
 	<-v.done
 }
 
+func (v *VideoReader) GetSourceType() SourceType {
+	return v.videoSource.GetSourceType()
+}
+
+func (v *VideoReader) GetConnectionStatus() ConnectionStatus {
+	return v.videoSource.GetConnectionStatus()
+}
+
 // GetFrameStatsSource returns the FrameStats directly
 func (v *VideoReader) GetFrameStatsSource() (result *FrameStats) {
 	result = v.sourceStats.GetFrameStats()

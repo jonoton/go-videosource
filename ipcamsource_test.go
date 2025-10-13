@@ -1,10 +1,8 @@
 //go:build config
-// +build config
 
 package videosource
 
 import (
-	"go/build"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -38,7 +36,8 @@ func TestIPCamSource(t *testing.T) {
 		tick.Stop()
 	}()
 
-	window := gocv.NewWindow("Test Window")
+	window := gocv.NewWindow("TestIPCamSource")
+	window.ResizeWindow(600, 400)
 	defer window.Close()
 	for img := range images {
 		mat := img.SharedMat.Mat
@@ -55,7 +54,7 @@ func getURLFromYaml() string {
 	}
 	url := ""
 	y := &urlYaml{}
-	yamlFile, err := ioutil.ReadFile(build.Default.GOPATH + "/src/github.com/jonoton/scout/.config/ipcam-test.yaml")
+	yamlFile, err := ioutil.ReadFile("./ipcam-test.yaml")
 	if err != nil {
 		log.Printf("yamlFile.Get err   #%v ", err)
 	}
