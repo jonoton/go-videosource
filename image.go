@@ -2,7 +2,6 @@ package videosource
 
 import (
 	"image"
-	"math"
 	"time"
 
 	"github.com/jonoton/go-sharedmat"
@@ -176,12 +175,10 @@ func (i *Image) ScaleToWidth(width int) Image {
 		interpolationFlags = gocv.InterpolationCubic
 	}
 	scaleWidth := float64(width) / float64(i.Width())
-	scaleHeight := float64(width) / float64(i.Height())
-	scaleEvenly := math.Min(scaleWidth, scaleHeight)
 	dstMat := gocv.NewMat()
 	i.SharedMat.Guard.RLock()
 	if sharedmat.Filled(&i.SharedMat.Mat) {
-		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scaleEvenly, scaleEvenly, interpolationFlags)
+		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scaleWidth, scaleWidth, interpolationFlags)
 		scaled = *NewImage(dstMat.Clone())
 		scaled.createdTime = i.createdTime
 	} else {
@@ -191,6 +188,52 @@ func (i *Image) ScaleToWidth(width int) Image {
 	dstMat.Close()
 	return scaled
 }
+
+// ScaleToFit will return a copy of the Image scaled so that its largest dimension is maxDimension, preserving aspect ratio.
+func (i *Image) ScaleToFit(maxDimension int) Image {
+	if maxDimension <= 0 {
+		return *i.Ref()
+	}
+	if i.SharedMat == nil {
+		return *i.Ref()
+	}
+	w := i.Width()
+	h := i.Height()
+	if w <= 0 || h <= 0 {
+		return *i.Ref()
+	}
+
+	largest := w
+	if h > w {
+		largest = h
+	}
+	if maxDimension == largest {
+		return *i.Ref()
+	}
+
+	var scaled Image
+	// scale down
+	var interpolationFlags = gocv.InterpolationArea
+	// scale up
+	if maxDimension > largest {
+		interpolationFlags = gocv.InterpolationCubic
+	}
+
+	scale := float64(maxDimension) / float64(largest)
+	dstMat := gocv.NewMat()
+	i.SharedMat.Guard.RLock()
+	if sharedmat.Filled(&i.SharedMat.Mat) {
+		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scale, scale, interpolationFlags)
+		scaled = *NewImage(dstMat.Clone())
+		scaled.createdTime = i.createdTime
+	} else {
+		scaled = *NewImage(dstMat.Clone())
+	}
+	i.SharedMat.Guard.RUnlock()
+	dstMat.Close()
+	return scaled
+}
+
 
 // ImageByCreatedTime sorting ascending order
 type ImageByCreatedTime []Image

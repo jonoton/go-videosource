@@ -22,7 +22,7 @@ func NewMotionInfo(rect image.Rectangle, colorThickness ColorThickness) *MotionI
 	return m
 }
 
-// Ref will create a copy and reference the underlying SharedMat
+// Ref will create a copy
 func (m *MotionInfo) Ref() *MotionInfo {
 	c := &MotionInfo{
 		Rect:          m.Rect,
@@ -65,7 +65,7 @@ func NewObjectInfo(rect image.Rectangle, colorThickness ColorThickness) *ObjectI
 	return o
 }
 
-// Ref will create a copy and reference the underlying SharedMat
+// Ref will create a copy
 func (o *ObjectInfo) Ref() *ObjectInfo {
 	c := &ObjectInfo{
 		Rect:          o.Rect,
@@ -121,7 +121,7 @@ func NewFaceInfo(rect image.Rectangle, colorThickness ColorThickness) *FaceInfo 
 	return f
 }
 
-// Ref will create a copy and reference the underlying SharedMat
+// Ref will create a copy
 func (f *FaceInfo) Ref() *FaceInfo {
 	c := &FaceInfo{
 		Rect:          f.Rect,
@@ -192,39 +192,47 @@ func (p *ProcessedImage) HasFace() bool {
 
 func (p *ProcessedImage) HighlightedMotion() *Image {
 	highlightedImage := p.Original.Clone()
-	highlightedMat := highlightedImage.SharedMat.Mat
-	for _, cur := range p.Motions {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+	if highlightedImage.SharedMat != nil {
+		highlightedMat := highlightedImage.SharedMat.Mat
+		for _, cur := range p.Motions {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
 	}
 	return highlightedImage
 }
 func (p *ProcessedImage) HighlightedObject() *Image {
 	highlightedImage := p.Original.Clone()
-	highlightedMat := highlightedImage.SharedMat.Mat
-	for _, cur := range p.Objects {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+	if highlightedImage.SharedMat != nil {
+		highlightedMat := highlightedImage.SharedMat.Mat
+		for _, cur := range p.Objects {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
 	}
 	return highlightedImage
 }
 func (p *ProcessedImage) HighlightedFace() *Image {
 	highlightedImage := p.Original.Clone()
-	highlightedMat := highlightedImage.SharedMat.Mat
-	for _, cur := range p.Faces {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+	if highlightedImage.SharedMat != nil {
+		highlightedMat := highlightedImage.SharedMat.Mat
+		for _, cur := range p.Faces {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
 	}
 	return highlightedImage
 }
 func (p *ProcessedImage) HighlightedAll() *Image {
 	highlightedImage := p.Original.Clone()
-	highlightedMat := highlightedImage.SharedMat.Mat
-	for _, cur := range p.Motions {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
-	}
-	for _, cur := range p.Objects {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
-	}
-	for _, cur := range p.Faces {
-		gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+	if highlightedImage.SharedMat != nil {
+		highlightedMat := highlightedImage.SharedMat.Mat
+		for _, cur := range p.Motions {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
+		for _, cur := range p.Objects {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
+		for _, cur := range p.Faces {
+			gocv.Rectangle(&highlightedMat, cur.Rect, cur.HighlightInfo.Color.GetRGBA(), cur.HighlightInfo.Thickness)
+		}
 	}
 	return highlightedImage
 }
@@ -294,17 +302,8 @@ func (p *ProcessedImage) Clone() *ProcessedImage {
 // Cleanup will cleanup the ProcessedImage
 func (p *ProcessedImage) Cleanup() {
 	p.Original.Cleanup()
-	for _, cur := range p.Motions {
-		cur.Cleanup()
-	}
 	p.Motions = make([]MotionInfo, 0)
-	for _, cur := range p.Objects {
-		cur.Cleanup()
-	}
 	p.Objects = make([]ObjectInfo, 0)
-	for _, cur := range p.Faces {
-		cur.Cleanup()
-	}
 	p.Faces = make([]FaceInfo, 0)
 }
 

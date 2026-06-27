@@ -10,7 +10,7 @@ func CorrectRectangle(i Image, rect image.Rectangle) (result image.Rectangle) {
 	if !i.IsFilled() {
 		return
 	}
-	result = rect
+	result = rect.Canon()
 	if result.Min.X < 0 {
 		result.Min.X = 0
 	}
@@ -35,9 +35,10 @@ func RectAddWidth(i Image, rect image.Rectangle, width int) (result image.Rectan
 	availMin := result.Min.X
 	availMax := i.Width() - result.Max.X
 	half := width / 2
-	if availMin >= half && availMax >= half {
+	other := width - half // handles odd widths: other == half+1 when width is odd
+	if availMin >= half && availMax >= other {
 		result.Min.X -= half
-		result.Max.X += half
+		result.Max.X += other
 	} else if availMin > availMax {
 		remain := width - availMax
 		result.Min.X -= remain
@@ -60,9 +61,10 @@ func RectAddHeight(i Image, rect image.Rectangle, height int) (result image.Rect
 	availMin := result.Min.Y
 	availMax := i.Height() - result.Max.Y
 	half := height / 2
-	if availMin >= half && availMax >= half {
+	other := height - half // handles odd heights: other == half+1 when height is odd
+	if availMin >= half && availMax >= other {
 		result.Min.Y -= half
-		result.Max.Y += half
+		result.Max.Y += other
 	} else if availMin > availMax {
 		remain := height - availMax
 		result.Min.Y -= remain
@@ -84,12 +86,18 @@ func RectScale(i Image, rect image.Rectangle, scale float64) (result image.Recta
 	if scale <= 0.0 {
 		return
 	}
-	scaleInt := int(math.Ceil(scale))
-	result = rect
-	scaledMin := result.Min.Mul(scaleInt)
-	scaledMax := result.Max.Mul(scaleInt)
-	result.Min = scaledMin
-	result.Max = scaledMax
+	// Use per-coordinate float math so fractional scales (e.g. 1.5x) are
+	// applied faithfully instead of being rounded up to the nearest integer.
+	result = image.Rectangle{
+		Min: image.Point{
+			X: int(math.Round(float64(rect.Min.X) * scale)),
+			Y: int(math.Round(float64(rect.Min.Y) * scale)),
+		},
+		Max: image.Point{
+			X: int(math.Round(float64(rect.Max.X) * scale)),
+			Y: int(math.Round(float64(rect.Max.Y) * scale)),
+		},
+	}
 	result = CorrectRectangle(i, result)
 	return
 }
@@ -130,7 +138,9 @@ func RectSquare(i Image, rect image.Rectangle) (result image.Rectangle) {
 	return
 }
 
-// RectRect will return a rectangle that fits within the Image i
+// RectRect will return a 16:9 aspect-ratio rectangle that fits within the Image i.
+// If the rect is already at least as wide as 16:9 for its height, it is returned unchanged.
+// Use RectAspectRatio for a configurable aspect ratio.
 func RectRect(i Image, rect image.Rectangle) (result image.Rectangle) {
 	if !i.IsFilled() {
 		return
@@ -165,6 +175,29 @@ func RectOverlap(rect1 image.Rectangle, rect2 image.Rectangle) (percentage1 int,
 	}
 	if rect2Area > 0 {
 		percentage2 = 100 * overlapArea / rect2Area
+	}
+	return
+}
+
+// RectAspectRatio will expand a rectangle to match the given aspect ratio (aspectW:aspectH)
+// as evenly as possible while keeping it within the Image i.
+// Only width is expanded; if the rect already meets or exceeds the target ratio it is
+// returned unchanged. Use RectRect for the convenience 16:9 variant.
+func RectAspectRatio(i Image, rect image.Rectangle, aspectW int, aspectH int) (result image.Rectangle) {
+	if !i.IsFilled() {
+		return
+	}
+	if aspectW <= 0 || aspectH <= 0 {
+		result = CorrectRectangle(i, rect)
+		return
+	}
+	result = CorrectRectangle(i, rect)
+	width := result.Dx()
+	height := result.Dy()
+	newWidth := height * aspectW / aspectH
+	if width < newWidth {
+		delta := newWidth - width
+		result = RectAddWidth(i, result, delta)
 	}
 	return
 }

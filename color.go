@@ -76,7 +76,7 @@ func (c Color) GetRGBA() color.RGBA {
 	case Red:
 		return color.RGBA{255, 0, 0, 0}
 	case White:
-		return color.RGBA{0, 0, 0, 0}
+		return color.RGBA{255, 255, 255, 0}
 	}
-	return color.RGBA{0, 0, 0, 0}
+	return color.RGBA{255, 255, 255, 0}
 }
