@@ -93,6 +93,8 @@ func (v *VideoReader) Start() <-chan Image {
 		go func() {
 			v.sourceStats.Start()
 			tick := time.NewTicker(v.getTickMs(inFps) * time.Millisecond)
+			addedFrames := 0
+			cancelled := false
 		SourceLoop:
 			for {
 				select {
@@ -110,17 +112,21 @@ func (v *VideoReader) Start() <-chan Image {
 							image.Cleanup()
 						}
 						frameBuffer.AddFrame(&img)
+						addedFrames++
 						v.sourceStats.AddAccepted()
 					} else {
 						image.Cleanup()
 						v.sourceStats.AddDropped()
 					}
 				case <-v.cancel:
+					cancelled = true
 					break SourceLoop
 				}
 			}
 			tick.Stop()
-			frameBuffer.Drain()
+			if !cancelled && addedFrames > 0 {
+				frameBuffer.Drain()
+			}
 			frameBuffer.Close()
 		}()
 
@@ -133,6 +139,9 @@ func (v *VideoReader) Start() <-chan Image {
 				select {
 				case images <- *img:
 					v.outputStats.AddAccepted()
+				case <-v.cancel:
+					img.Cleanup()
+					v.outputStats.AddDropped()
 				case <-time.After(time.Duration(v.DropTimeoutMs) * time.Millisecond):
 					img.Cleanup()
 					v.outputStats.AddDropped()

@@ -57,12 +57,9 @@ func (f *FileSource) ReadImage() (done bool, image Image) {
 	}
 	mat := gocv.NewMat()
 	if !f.gocvVideoCapture.Read(&mat) || mat.Empty() {
-		if !mat.Empty() {
-			mat.Close()
-		}
+		mat.Close()
 		f.status = Disconnected
 		done = true
-		image = *NewImage(mat)
 		return
 	}
 	image = *NewImage(mat)

@@ -136,9 +136,7 @@ func (i *IPCamSource) ReadImage() (done bool, image Image) {
 	mat := gocv.NewMat()
 	done = false
 	if ok := i.gocvVideoCapture.Read(&mat); !ok || mat.Empty() {
-		if !mat.Empty() {
-			mat.Close()
-		}
+		mat.Close()
 		i.consecutiveFailures++
 		maxTolerance := i.maxFailureTolerance
 		if maxTolerance <= 0 {
@@ -148,7 +146,6 @@ func (i *IPCamSource) ReadImage() (done bool, image Image) {
 			i.status = Disconnected
 			done = true
 		}
-		image = *NewImage(mat)
 		return
 	}
 	i.consecutiveFailures = 0

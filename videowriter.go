@@ -183,6 +183,7 @@ func (v *VideoWriter) Start() {
 			}
 			processedImageSub, _ := pubsubmutex.Subscribe[*ProcessedImage](&v.pubsub,
 				topicWriterImages, v.pubsub.GetUniqueSubscriberID(), bufferSize)
+			addedFrames := 0
 		InputLoop:
 			for {
 				select {
@@ -208,13 +209,16 @@ func (v *VideoWriter) Start() {
 					// buffer for writing
 					img := processedImage.Original
 					frameBuffer.AddFrame(img.Ref())
+					addedFrames++
 					processedImage.Cleanup()
 				case <-v.cancel:
 					break InputLoop
 				}
 			}
 			processedImageSub.Unsubscribe()
-			frameBuffer.Drain()
+			if addedFrames > 0 {
+				frameBuffer.Drain()
+			}
 			frameBuffer.Close()
 		}()
 
@@ -316,7 +320,10 @@ func (v *VideoWriter) Trigger() {
 	if v.IsDone() {
 		return
 	}
-	v.recordChan <- true
+	select {
+	case <-v.cancel:
+	case v.recordChan <- true:
+	}
 }
 
 // Send Image to write
