@@ -129,10 +129,9 @@ func (i *Image) ChangeQuality(percent int) Image {
 		if err == nil {
 			newMat, err := gocv.IMDecode(encoded.GetBytes(), gocv.IMReadUnchanged)
 			if err == nil {
-				updatedImage = *NewImage(newMat.Clone())
+				updatedImage = *NewImage(newMat)
 				updatedImage.createdTime = i.createdTime
 			}
-			newMat.Close()
 		}
 		encoded.Close()
 	}
@@ -179,13 +178,13 @@ func (i *Image) ScaleToWidth(width int) Image {
 	i.SharedMat.Guard.RLock()
 	if sharedmat.Filled(&i.SharedMat.Mat) {
 		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scaleWidth, scaleWidth, interpolationFlags)
-		scaled = *NewImage(dstMat.Clone())
+		scaled = *NewImage(dstMat)
 		scaled.createdTime = i.createdTime
 	} else {
-		scaled = *NewImage(dstMat.Clone())
+		dstMat.Close()
+		scaled = *NewImage(gocv.NewMat())
 	}
 	i.SharedMat.Guard.RUnlock()
-	dstMat.Close()
 	return scaled
 }
 
@@ -224,13 +223,13 @@ func (i *Image) ScaleToFit(maxDimension int) Image {
 	i.SharedMat.Guard.RLock()
 	if sharedmat.Filled(&i.SharedMat.Mat) {
 		gocv.Resize(i.SharedMat.Mat, &dstMat, image.Point{}, scale, scale, interpolationFlags)
-		scaled = *NewImage(dstMat.Clone())
+		scaled = *NewImage(dstMat)
 		scaled.createdTime = i.createdTime
 	} else {
-		scaled = *NewImage(dstMat.Clone())
+		dstMat.Close()
+		scaled = *NewImage(gocv.NewMat())
 	}
 	i.SharedMat.Guard.RUnlock()
-	dstMat.Close()
 	return scaled
 }
 

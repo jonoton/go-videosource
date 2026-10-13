@@ -33,6 +33,7 @@ type FrameStatsCombo struct {
 
 // VideoStats contains video statistics
 type VideoStats struct {
+	mu                sync.RWMutex
 	acceptedTotal     int
 	acceptedPerSecond int
 	droppedTotal      int
@@ -110,10 +111,12 @@ func (v *VideoStats) Close() {
 }
 
 func (v *VideoStats) tick() {
+	v.mu.Lock()
 	v.acceptedPerSecond = v.acceptedTmp
 	v.acceptedTmp = 0
 	v.droppedPerSecond = v.droppedTmp
 	v.droppedTmp = 0
+	v.mu.Unlock()
 	v.publishCurrentStats()
 }
 
@@ -123,8 +126,10 @@ func (v *VideoStats) AddAccepted() {
 }
 
 func (v *VideoStats) addAccepted() {
+	v.mu.Lock()
 	v.acceptedTotal++
 	v.acceptedTmp++
+	v.mu.Unlock()
 }
 
 // AddDropped adds a dropped image
@@ -133,8 +138,10 @@ func (v *VideoStats) AddDropped() {
 }
 
 func (v *VideoStats) addDropped() {
+	v.mu.Lock()
 	v.droppedTotal++
 	v.droppedTmp++
+	v.mu.Unlock()
 }
 
 // GetStats returns the FrameStats using pubsub
@@ -149,6 +156,8 @@ func (v *VideoStats) GetStats(timeoutMs int) (result *FrameStats) {
 
 // GetFrameStats returns the FrameStats directly
 func (v *VideoStats) GetFrameStats() *FrameStats {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
 	f := &FrameStats{
 		AcceptedTotal:     v.acceptedTotal,
 		AcceptedPerSecond: v.acceptedPerSecond,
@@ -159,8 +168,10 @@ func (v *VideoStats) GetFrameStats() *FrameStats {
 }
 
 func (v *VideoStats) clearPerSecond() {
+	v.mu.Lock()
 	v.acceptedPerSecond = 0
 	v.droppedPerSecond = 0
+	v.mu.Unlock()
 }
 
 func (v *VideoStats) publishCurrentStats() {

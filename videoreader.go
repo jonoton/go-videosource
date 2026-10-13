@@ -112,6 +112,7 @@ func (v *VideoReader) Start() <-chan Image {
 						frameBuffer.AddFrame(&img)
 						v.sourceStats.AddAccepted()
 					} else {
+						image.Cleanup()
 						v.sourceStats.AddDropped()
 					}
 				case <-v.cancel:

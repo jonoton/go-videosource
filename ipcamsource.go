@@ -3,31 +3,55 @@ package videosource
 import (
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 
 	"gocv.io/x/gocv"
 )
 
+var ffmpegCaptureMu sync.Mutex
+
 // IPCamSource is a ipcam source
 type IPCamSource struct {
 	BaseVideo
-	url              string
-	captureTimeoutMs int
+	url                 string
+	captureTimeoutMs    int
+	captureOptions      string
+	consecutiveFailures int
+	maxFailureTolerance int
 }
 
 // NewIPCamSource creates a new IPCamSource
 func NewIPCamSource(name string, url string) *IPCamSource {
 	i := &IPCamSource{
-		BaseVideo:        *NewBaseVideo(name, IPCamSourceType),
-		url:              url,
-		captureTimeoutMs: 0,
+		BaseVideo:           *NewBaseVideo(name, IPCamSourceType),
+		url:                 url,
+		captureTimeoutMs:    0,
+		captureOptions:      "",
+		consecutiveFailures: 0,
+		maxFailureTolerance: 10,
 	}
 	return i
 }
 
 func (i *IPCamSource) SetCaptureTimeoutMs(captureTimeoutMs int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
 	i.captureTimeoutMs = captureTimeoutMs
+}
+
+func (i *IPCamSource) SetCaptureOptions(options string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.captureOptions = options
+}
+
+func (i *IPCamSource) SetMaxFailureTolerance(tolerance int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.maxFailureTolerance = tolerance
 }
 
 // Initialize implements interface
@@ -44,23 +68,46 @@ func (i *IPCamSource) Initialize() (ok bool) {
 		return
 	}
 	i.status = Connecting
+	timeoutMs := i.captureTimeoutMs
+	captureOpts := i.captureOptions
+	url := i.url
 	i.mu.Unlock()
 
-	if i.captureTimeoutMs > 0 {
+	ffmpegCaptureMu.Lock()
+	origEnv, hadEnv := os.LookupEnv("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+
+	var opts []string
+	if timeoutMs > 0 {
 		// Set ffmpeg timeout in microseconds
-		captureTimeoutStr := fmt.Sprintf("stimeout;%d", i.captureTimeoutMs*1000)
-		os.Setenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", captureTimeoutStr)
+		opts = append(opts, fmt.Sprintf("stimeout;%d", timeoutMs*1000))
 	}
-	gocvVideoCapture, err := gocv.VideoCaptureFile(i.url)
+	if captureOpts != "" {
+		opts = append(opts, captureOpts)
+	} else if hadEnv && origEnv != "" {
+		opts = append(opts, origEnv)
+	}
+	if len(opts) > 0 {
+		os.Setenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", strings.Join(opts, "|"))
+	}
+	gocvVideoCapture, err := gocv.VideoCaptureFile(url)
+
+	// Restore original process environment immediately to prevent cross-camera bleed
+	if hadEnv {
+		os.Setenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", origEnv)
+	} else {
+		os.Unsetenv("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+	}
+	ffmpegCaptureMu.Unlock()
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if err != nil {
 		i.status = Disconnected
-		log.Warnf("Could not open video capture url: %s", i.url)
+		log.Warnf("Could not open video capture url: %s", url)
 		return
 	}
 	i.gocvVideoCapture = gocvVideoCapture
+	i.consecutiveFailures = 0
 	i.status = Connected
 	ok = true
 	return
@@ -88,10 +135,23 @@ func (i *IPCamSource) ReadImage() (done bool, image Image) {
 	}
 	mat := gocv.NewMat()
 	done = false
-	if ok := i.gocvVideoCapture.Read(&mat); !ok {
-		i.status = Disconnected
-		done = true
+	if ok := i.gocvVideoCapture.Read(&mat); !ok || mat.Empty() {
+		if !mat.Empty() {
+			mat.Close()
+		}
+		i.consecutiveFailures++
+		maxTolerance := i.maxFailureTolerance
+		if maxTolerance <= 0 {
+			maxTolerance = 10
+		}
+		if i.consecutiveFailures >= maxTolerance {
+			i.status = Disconnected
+			done = true
+		}
+		image = *NewImage(mat)
+		return
 	}
+	i.consecutiveFailures = 0
 	image = *NewImage(mat)
 	return
 }

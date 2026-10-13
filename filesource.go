@@ -30,6 +30,7 @@ func (f *FileSource) Initialize() (ok bool) {
 	}
 	f.mu.Lock()
 	f.gocvVideoCapture = gocvVideoCapture
+	f.status = Connected
 	f.mu.Unlock()
 	ok = true
 	return
@@ -43,18 +44,27 @@ func (f *FileSource) Cleanup() {
 		f.gocvVideoCapture.Close()
 		f.gocvVideoCapture = nil
 	}
+	f.status = Disconnected
 }
 
 // ReadImage implements interface
 func (f *FileSource) ReadImage() (done bool, image Image) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.gocvVideoCapture == nil {
+	if f.status != Connected || f.gocvVideoCapture == nil {
 		done = true
 		return
 	}
 	mat := gocv.NewMat()
-	done = !f.gocvVideoCapture.Read(&mat)
+	if !f.gocvVideoCapture.Read(&mat) || mat.Empty() {
+		if !mat.Empty() {
+			mat.Close()
+		}
+		f.status = Disconnected
+		done = true
+		image = *NewImage(mat)
+		return
+	}
 	image = *NewImage(mat)
 	return
 }

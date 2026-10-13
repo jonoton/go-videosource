@@ -60,6 +60,7 @@ const (
 
 // VideoWriter writes Images
 type VideoWriter struct {
+	stateMu          sync.RWMutex
 	record           bool
 	recording        bool
 	startTime        time.Time
@@ -149,12 +150,15 @@ func NewVideoWriter(name string, saveDirectory string, codec string, fileType st
 }
 
 func (v *VideoWriter) checkLastActivityTime(img *ProcessedImage) {
-	if v.record &&
-		((v.activityType == ActivityImage && img.Original.IsFilled()) ||
-			(v.activityType == ActivityMotion && img.HasMotion()) ||
-			(v.activityType == ActivityObject && img.HasObject()) ||
-			(v.activityType == ActivityFace && img.HasFace())) {
-		v.lastActivityTime = time.Now()
+	if (v.activityType == ActivityImage && img.Original.IsFilled()) ||
+		(v.activityType == ActivityMotion && img.HasMotion()) ||
+		(v.activityType == ActivityObject && img.HasObject()) ||
+		(v.activityType == ActivityFace && img.HasFace()) {
+		v.stateMu.Lock()
+		if v.record {
+			v.lastActivityTime = time.Now()
+		}
+		v.stateMu.Unlock()
 	}
 }
 
@@ -240,8 +244,10 @@ func (v *VideoWriter) Start() {
 			for {
 				select {
 				case <-v.recordChan:
+					v.stateMu.Lock()
 					v.record = true
 					v.lastActivityTime = time.Now()
+					v.stateMu.Unlock()
 					if v.isStartRecord() {
 						v.transferPreBuffer()
 					}
@@ -265,7 +271,7 @@ func (v *VideoWriter) Start() {
 						v.openRecord(*img, *previewImg)
 						v.cleanupPreviewImg()
 						v.writeRecord(*img)
-					} else if v.recording {
+					} else if v.isRecording() {
 						v.writeRecord(*img)
 					}
 					img.Cleanup()
@@ -282,8 +288,10 @@ func (v *VideoWriter) Start() {
 						v.clearWriteBuffer()
 					}
 					if v.isActivityExpired() {
+						v.stateMu.Lock()
 						v.record = false
 						v.lastActivityTime = time.Time{}
+						v.stateMu.Unlock()
 						v.closeRecord()
 						v.cleanupPreviewImg()
 						v.clearWriteBuffer()
@@ -334,11 +342,21 @@ func (v *VideoWriter) Wait() {
 }
 
 func (v *VideoWriter) isStartRecord() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
 	return v.record && !v.recording
 }
 
 func (v *VideoWriter) isCloseRecord() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
 	return !v.record && v.recording
+}
+
+func (v *VideoWriter) isRecording() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
+	return v.recording
 }
 
 func (v *VideoWriter) hasPreBuffer() bool {
@@ -349,9 +367,14 @@ func (v *VideoWriter) addImgBuffer(img *Image) {
 	if img == nil {
 		return
 	}
-	if !v.recording && v.hasPreBuffer() {
+	v.stateMu.RLock()
+	recording := v.recording
+	startRecord := v.record && !v.recording
+	v.stateMu.RUnlock()
+
+	if !recording && v.hasPreBuffer() {
 		v.preWriteBuffer.Add(img)
-	} else if v.isStartRecord() || v.recording {
+	} else if startRecord || recording {
 		v.writeBuffer.Add(img)
 	} else {
 		img.Cleanup()
@@ -394,7 +417,9 @@ func (v *VideoWriter) openRecord(img Image, preview Image) {
 			v.codec, float64(v.outFps),
 			img.Width(), img.Height(), true)
 		if err == nil {
+			v.stateMu.Lock()
 			v.recording = true
+			v.stateMu.Unlock()
 			v.writerFull = wFull
 
 		} else {
@@ -408,15 +433,19 @@ func (v *VideoWriter) openRecord(img Image, preview Image) {
 			v.codec, float64(v.outFps),
 			scaledImage.Width(), scaledImage.Height(), true)
 		if err == nil {
+			v.stateMu.Lock()
 			v.recording = true
+			v.stateMu.Unlock()
 			v.writerPortable = wPortable
 		} else {
 			log.Error("Could not open gocv writer portable")
 		}
 		scaledImage.Cleanup()
 	}
-	if v.recording {
+	if v.isRecording() {
+		v.stateMu.Lock()
 		v.startTime = timeNow
+		v.stateMu.Unlock()
 		if v.savePreview {
 			SavePreview(preview, timeNow, v.saveDirectory, v.name, "", "")
 		}
@@ -432,15 +461,21 @@ func (v *VideoWriter) closeRecord() {
 		v.writerPortable.Close()
 		v.writerPortable = nil
 	}
+	v.stateMu.Lock()
 	v.startTime = time.Time{}
 	v.recording = false
+	v.stateMu.Unlock()
 }
 
 func (v *VideoWriter) isRecordExpired() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
 	return !v.startTime.IsZero() && time.Since(v.startTime) > (time.Duration(v.maxSec)*time.Second)
 }
 
 func (v *VideoWriter) isActivityExpired() bool {
+	v.stateMu.RLock()
+	defer v.stateMu.RUnlock()
 	return !v.lastActivityTime.IsZero() && time.Since(v.lastActivityTime) > (time.Duration(v.activitySec)*time.Second)
 }
 
