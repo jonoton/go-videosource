@@ -4,6 +4,8 @@ github.com/jonoton/go-pubsubmutex v1.11.0 h1:EydUBkrfcdyWYH8EvUwNaiKdZrNgZp2qyVw
 github.com/jonoton/go-pubsubmutex v1.11.0/go.mod h1:GBBhtLidNH0qT+T2OcRMGIcJg3Oqy/1pgP8cWOBbcI0=
 github.com/jonoton/go-ringbuffer v1.6.0 h1:TsGZEfnwCLRwVZ9nEtnqhDPSgbk+TuoSI8WWMaa5fNQ=
 github.com/jonoton/go-ringbuffer v1.6.0/go.mod h1:FT9MtKbkAhqwoe8oT/fYND56TchFY3TnRDYS3LohIi0=
+github.com/jonoton/go-sharedmat v1.3.0 h1:3cyq1JbPiJuVF5EIpDPXW4XlHol4rHPJNb612ooqzTw=
+github.com/jonoton/go-sharedmat v1.3.0/go.mod h1:mXgGl+qlkzsxl9r4kCHkuMUo7yYHMIGLbCVW8FO8F/I=
 github.com/jonoton/go-temporalbuffer v1.6.0 h1:QbBJA1REl/txtvsFYBkEnN22FoSmyW1YGU2EX0mLZIs=
 github.com/jonoton/go-temporalbuffer v1.6.0/go.mod h1:KBuuwUU8UulFqhTYRhZwP3m4vCLUpYH5K/VV9QP6nrM=
 github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBBo=
